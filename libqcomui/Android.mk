@@ -4,9 +4,10 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
         qcom_ui.cpp
 
-ifeq ($(call is-board-platform,msm7x27a),true)
-        LOCAL_CFLAGS += -DCHECK_FOR_EXTERNAL_FORMAT
-endif
+#ifeq ($(TARGET_BOARD_PLATFORM),qsd8k) # these are originally for 7x27a
+#    LOCAL_CFLAGS += -DCHECK_FOR_EXTERNAL_FORMAT
+#    LOCAL_CFLAGS += -DBYPASS_EGLIMAGE
+#endif
 
 LOCAL_SHARED_LIBRARIES := \
         libutils \
