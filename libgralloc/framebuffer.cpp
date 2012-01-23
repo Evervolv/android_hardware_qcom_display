@@ -636,10 +636,14 @@ int mapFrameBufferLocked(struct private_module_t* module)
         info.transp.length  = 0;
         module->fbFormat = HAL_PIXEL_FORMAT_RGB_565;
     }
+
+    //adreno needs 4k aligned offsets. Max hole size is 4096-1
+    int  size = roundUpToPageSize(info.yres * info.xres * (info.bits_per_pixel/8));
+
     /*
      * Request NUM_BUFFERS screens (at lest 2 for page flipping)
      */
-    int numberOfBuffers = (int)(finfo.smem_len/(info.yres * info.xres * (info.bits_per_pixel/8)));
+    int numberOfBuffers = (int)(finfo.smem_len/size);
     LOGV("num supported framebuffers in kernel = %d", numberOfBuffers);
 
     if (property_get("debug.gr.numframebuffers", property, NULL) > 0) {
@@ -769,13 +773,13 @@ int mapFrameBufferLocked(struct private_module_t* module)
      */
 
     int err;
-    size_t fbSize = roundUpToPageSize(finfo.line_length * info.yres_virtual);
-    module->framebuffer = new private_handle_t(fd, fbSize,
-            private_handle_t::PRIV_FLAGS_USES_PMEM, BUFFER_TYPE_UI, module->fbFormat, info.xres, info.yres);
-
     module->numBuffers = info.yres_virtual / info.yres;
     module->bufferMask = 0;
-
+    //adreno needs page aligned offsets. Align the fbsize to pagesize.
+    size_t fbSize = roundUpToPageSize(finfo.line_length * info.yres) * module->numBuffers;
+    module->framebuffer = new private_handle_t(fd, fbSize,
+                            private_handle_t::PRIV_FLAGS_USES_PMEM, BUFFER_TYPE_UI,
+                            module->fbFormat, info.xres, info.yres);
     void* vaddr = mmap(0, fbSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (vaddr == MAP_FAILED) {
         LOGE("Error mapping the framebuffer (%s)", strerror(errno));
