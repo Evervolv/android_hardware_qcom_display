@@ -122,20 +122,18 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
         // check for skip layer
         if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
             LOGD_IF(HWC_DEBUG,"hwc_prepare HWC_SKIP_LAYER on layer %d",i);
-            if (hwcModule->compositionType & COMPOSITION_TYPE_MDP) {
-                // ensure that HWC_OVERLAY layers below skip layers do not
-                // overwrite GPU composed skip layers.
-                ssize_t jj = ((ssize_t)i) - 1;
-                while (jj >= 0) {
-                    // re-mark every overlay layer below the
-                    // skip-layer for GPU composition.
-                    LOGD_IF(HWC_DEBUG,"hwc_prepare using framebuffer for layer %d",jj);
-                    list->hwLayers[jj].compositionType = HWC_FRAMEBUFFER;
-                    jj--;
-                }
+            ssize_t layer_countdown = ((ssize_t)i) - 1;
+            // Mark every layer below the SKIP layer to be composed by the GPU
+            while (layer_countdown >= 0)
+            {
+                list->hwLayers[layer_countdown].compositionType = HWC_FRAMEBUFFER;
+                list->hwLayers[layer_countdown].hints &= ~HWC_HINT_CLEAR_FB;
+                layer_countdown--;
             }
             continue;
         }
+
+
 
         // use copybit for everything
         if (hwcModule->compositionType & COMPOSITION_TYPE_MDP) {
@@ -270,11 +268,83 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
     dst.base = (void *)fbHandle->base;
     dst.handle = (native_handle_t *)renderBuffer->handle;
 
+    copybit_device_t *copybit = hwcModule->copybitEngine;
+
+    int32_t screen_w        = displayFrame.right - displayFrame.left;
+    int32_t screen_h        = displayFrame.bottom - displayFrame.top;
+    int32_t src_crop_width  = sourceCrop.right - sourceCrop.left;
+    int32_t src_crop_height = sourceCrop.bottom -sourceCrop.top;
+
+    int32_t copybitsMaxScale = copybit->get(copybit,COPYBIT_MAGNIFICATION_LIMIT);
+
+    if(layer->transform & (HWC_TRANSFORM_ROT_90 | HWC_TRANSFORM_ROT_270)){
+        //swap screen width and height
+        int tmp = screen_w;
+        screen_w  = screen_h;
+        screen_h = tmp;
+    }
+    int32_t dsdx = screen_w/src_crop_width;
+    int32_t dtdy = screen_h/src_crop_height;
+    sp<GraphicBuffer> tempBitmap;
+
+    if(dsdx  > copybitsMaxScale || dtdy > copybitsMaxScale){
+        // The requested scale is out of the range the hardware
+        // can support.
+       LOGD("%s:%d::Need to scale dsdx=%d, dtdy=%d,maxScaleInv=%d,screen_w=%d,screen_h=%d \
+                  src_crop_width=%d src_crop_height=%d",__FUNCTION__,__LINE__,
+                  dsdx,dtdy,copybitsMaxScale,screen_w,screen_h,src_crop_width,src_crop_height);
+
+       //Driver makes width and height as even
+       //that may cause wrong calculation of the ratio
+       //in display and crop.Hence we make
+       //crop width and height as even.
+       src_crop_width  = (src_crop_width/2)*2;
+       src_crop_height = (src_crop_height/2)*2;
+
+       int tmp_w =  src_crop_width*copybitsMaxScale;
+       int tmp_h =  src_crop_height*copybitsMaxScale;
+
+       LOGD("%s:%d::tmp_w = %d,tmp_h = %d",__FUNCTION__,__LINE__,tmp_w,tmp_h);
+       tempBitmap = new GraphicBuffer(
+                    tmp_w, tmp_h, src.format,
+                    GraphicBuffer::USAGE_HW_2D);
+
+       err = tempBitmap->initCheck();
+       if (err == android::NO_ERROR){
+            copybit_image_t tmp_dst;
+            copybit_rect_t tmp_rect;
+            tmp_dst.w = tmp_w;
+            tmp_dst.h = tmp_h;
+            tmp_dst.format = tempBitmap->format;
+            tmp_dst.handle = (native_handle_t*)tempBitmap->getNativeBuffer()->handle;
+            tmp_dst.horiz_padding = src.horiz_padding;
+            tmp_dst.vert_padding = src.vert_padding;
+            tmp_rect.l = 0;
+            tmp_rect.t = 0;
+            tmp_rect.r = tmp_dst.w;
+            tmp_rect.b = tmp_dst.h;
+            //create one clip region
+            hwc_rect tmp_hwc_rect = {0,0,tmp_rect.r,tmp_rect.b};
+            hwc_region_t tmp_hwc_reg = {1,(hwc_rect_t const*)&tmp_hwc_rect};
+            region_iterator tmp_it(tmp_hwc_reg);
+            copybit->set_parameter(copybit,COPYBIT_TRANSFORM,0);
+            copybit->set_parameter(copybit, COPYBIT_PLANE_ALPHA,
+                        (layer->blending == HWC_BLENDING_NONE) ? -1 : layer->alpha);
+            err = copybit->stretch(copybit,&tmp_dst, &src, &tmp_rect, &srcRect, &tmp_it);
+            if(err < 0){
+                LOGE("%s:%d::tmp copybit stretch failed",__FUNCTION__,__LINE__);
+                return err;
+            }
+            // copy new src and src rect crop
+            src = tmp_dst;
+            srcRect = tmp_rect;
+      }
+    }
+
     // Copybit region
     hwc_region_t region = layer->visibleRegionScreen;
     region_iterator copybitRegion(region);
 
-    copybit_device_t *copybit = hwcModule->copybitEngine;
     copybit->set_parameter(copybit, COPYBIT_FRAMEBUFFER_WIDTH, renderBuffer->width);
     copybit->set_parameter(copybit, COPYBIT_FRAMEBUFFER_HEIGHT, renderBuffer->height);
     copybit->set_parameter(copybit, COPYBIT_TRANSFORM, layer->transform);
@@ -282,6 +352,8 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
                            (layer->blending == HWC_BLENDING_NONE) ? -1 : layer->alpha);
     copybit->set_parameter(copybit, COPYBIT_PREMULTIPLIED_ALPHA,
                            (layer->blending == HWC_BLENDING_PREMULT)? COPYBIT_ENABLE : COPYBIT_DISABLE);
+    copybit->set_parameter(copybit, COPYBIT_DITHER,
+                            (dst.format == HAL_PIXEL_FORMAT_RGB_565)? COPYBIT_ENABLE : COPYBIT_DISABLE);
     err = copybit->stretch(copybit, &dst, &src, &dstRect, &srcRect, &copybitRegion);
 
     if(err < 0)
@@ -326,19 +398,19 @@ static int hwc_set(hwc_composer_device_t *dev,
         return -1;
     }
 
-    framebuffer_device_t *fbDev = hwcModule->fbDevice;
-
-    //TODO: this probably needs work
     for (size_t i=0; i<list->numHwLayers; i++) {
-        dump_layer(&list->hwLayers[i]);
         if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
             continue;
         } else if (list->flags & HWC_SKIP_COMPOSITION) {
-            break;
+            continue;
         } else if (list->hwLayers[i].compositionType == HWC_USE_COPYBIT) {
-            drawLayerUsingCopybit(dev, &(list->hwLayers[i]), (EGLDisplay)dpy, (EGLSurface)sur);
+            drawLayerUsingCopybit(dev, &(list->hwLayers[i]),
+                                    (EGLDisplay)dpy, (EGLSurface)sur);
         }
     }
+
+    if(list->flags & HWC_SKIP_COMPOSITION)
+        LOGD_IF(HWC_DEBUG,"hwc_set skipping eglSwapBuffer call");
 
     // Do not call eglSwapBuffers if the skip composition flag is set on the list.
     if (!(list->flags & HWC_SKIP_COMPOSITION)) {
