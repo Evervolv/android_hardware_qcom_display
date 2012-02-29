@@ -14,9 +14,14 @@ LOCAL_SHARED_LIBRARIES := \
         libcutils \
         libmemalloc \
         libui \
-        libEGL
+        libEGL \
+        libskia
 
 LOCAL_C_INCLUDES := $(TOP)/hardware/qcom/display/libgralloc \
+                    $(TOP)/frameworks/base/services/surfaceflinger \
+                    $(TOP)/external/skia/include/core \
+                    $(TOP)/external/skia/include/images
+
 LOCAL_CFLAGS := -DLOG_TAG=\"libQcomUI\"
 LOCAL_CFLAGS += -DQCOM_HARDWARE
 LOCAL_CFLAGS += -DDEBUG_CALC_FPS
