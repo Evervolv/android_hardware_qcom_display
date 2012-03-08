@@ -743,8 +743,6 @@ static int prepareOverlay(hwc_context_t *ctx, hwc_layer_t *layer, const int flag
         info.height = hnd->height;
         info.format = hnd->format;
         info.size = hnd->size;
-        info.secure = (hnd->flags &
-                       private_handle_t::PRIV_FLAGS_SECURE_BUFFER)? true:false;
 
         int hdmiConnected = 0;
 
@@ -1150,6 +1148,9 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
             } else if (hnd && (hnd->bufferType == BUFFER_TYPE_VIDEO) && (yuvBufferCount == 1)) {
                 setVideoOverlayStatusInGralloc(ctx, true);
                 int flags = WAIT_FOR_VSYNC;
+                flags |= (hnd->flags &
+                       private_handle_t::PRIV_FLAGS_SECURE_BUFFER)?
+                       SECURE_OVERLAY_SESSION : 0;
                 flags |= (1 == list->numHwLayers) ? DISABLE_FRAMEBUFFER_FETCH : 0;
                 if (!isValidDestination(hwcModule->fbDevice, list->hwLayers[i].displayFrame)) {
                     list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
@@ -1189,6 +1190,9 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 setVideoOverlayStatusInGralloc(ctx, true);
                 int flags = WAIT_FOR_VSYNC;
                 flags |= (1 == list->numHwLayers) ? DISABLE_FRAMEBUFFER_FETCH : 0;
+                flags |= (hnd->flags &
+                       private_handle_t::PRIV_FLAGS_SECURE_BUFFER)?
+                       SECURE_OVERLAY_SESSION : 0;
 #ifdef USE_OVERLAY
                 if(prepareOverlay(ctx, &(list->hwLayers[i]), flags) == 0) {
                     list->hwLayers[i].compositionType = HWC_USE_OVERLAY;
