@@ -655,20 +655,22 @@ int mapFrameBufferLocked(struct private_module_t* module)
     if (numberOfBuffers > NUM_FRAMEBUFFERS_MAX)
         numberOfBuffers = NUM_FRAMEBUFFERS_MAX;
 
-    LOGE("We support %d buffers", numberOfBuffers);
+    LOGV("We support %d buffers", numberOfBuffers);
 
-    info.yres_virtual = info.yres * numberOfBuffers;
+    //consider the included hole by 4k alignment
+    uint32_t line_length = (info.xres * info.bits_per_pixel / 8);
+    info.yres_virtual = (size * numberOfBuffers) / line_length;
 
     uint32_t flags = PAGE_FLIP;
     if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1) {
-        info.yres_virtual = info.yres;
+        info.yres_virtual = size / line_length;
         flags &= ~PAGE_FLIP;
         LOGW("FBIOPUT_VSCREENINFO failed, page flipping not supported");
     }
 
-    if (info.yres_virtual < info.yres * 2) {
+    if (info.yres_virtual < ((size * 2) / line_length) ) {
         // we need at least 2 for page-flipping
-        info.yres_virtual = info.yres;
+        info.yres_virtual = size / line_length;
         flags &= ~PAGE_FLIP;
         LOGW("page flipping not supported (yres_virtual=%d, requested=%d)",
                 info.yres_virtual, info.yres*2);
