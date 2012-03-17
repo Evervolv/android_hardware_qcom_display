@@ -8,7 +8,7 @@ LOCAL_MODULE := hwcomposer.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := liblog libcutils libEGL libhardware libutils
-LOCAL_SHARED_LIBRARIES += libgenlock libui
+LOCAL_SHARED_LIBRARIES += libgenlock libui libmemalloc libQcomUI
 
 LOCAL_SRC_FILES := 	hwcomposer.cpp
 

@@ -40,6 +40,7 @@
 #include <genlock.h>
 #include <qcom_ui.h>
 #include <copybit.h>
+#include <gr.h>
 
 #define HWC_DEBUG 0
 // Warning: below defines produce massive logcat output
@@ -216,19 +217,19 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
     genlock_lock_type lockType = GENLOCK_READ_LOCK;
     int err = genlock_lock_buffer(hnd, lockType, GENLOCK_MAX_TIMEOUT);
     if (GENLOCK_FAILURE == err) {
-        LOGE("drawLayerUsingCopybit genlock_lock_buffer(READ) failed");
+        LOGE("%s: genlock_lock_buffer(READ) failed", __FUNCTION__);
         return -1;
     }
     //render buffer
     android_native_buffer_t *renderBuffer = (android_native_buffer_t *)eglGetRenderBufferANDROID(dpy, surface);
     if (!renderBuffer) {
-        LOGE("drawLayerUsingCopybit eglGetRenderBufferANDROID returned NULL buffer");
+        LOGE("%s: eglGetRenderBufferANDROID returned NULL buffer", __FUNCTION__);
         genlock_unlock_buffer(hnd);
         return -1;
     }
     private_handle_t *fbHandle = (private_handle_t *)renderBuffer->handle;
     if(!fbHandle) {
-        LOGE("drawLayerUsingCopybit Framebuffer handle is NULL");
+        LOGE("%s: Framebuffer handle is NULL", __FUNCTION__);
         genlock_unlock_buffer(hnd);
         return -1;
     }
@@ -275,22 +276,40 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
     int32_t src_crop_width  = sourceCrop.right - sourceCrop.left;
     int32_t src_crop_height = sourceCrop.bottom -sourceCrop.top;
 
-    int32_t copybitsMaxScale = copybit->get(copybit,COPYBIT_MAGNIFICATION_LIMIT);
+    float copybitsMaxScale = (float)copybit->get(copybit,COPYBIT_MAGNIFICATION_LIMIT);
 
-    if(layer->transform & (HWC_TRANSFORM_ROT_90 | HWC_TRANSFORM_ROT_270)){
+    if((layer->transform == HWC_TRANSFORM_ROT_90) ||
+                           (layer->transform == HWC_TRANSFORM_ROT_270)) {
         //swap screen width and height
         int tmp = screen_w;
         screen_w  = screen_h;
         screen_h = tmp;
     }
-    int32_t dsdx = screen_w/src_crop_width;
-    int32_t dtdy = screen_h/src_crop_height;
-    sp<GraphicBuffer> tempBitmap;
 
-    if(dsdx  > copybitsMaxScale || dtdy > copybitsMaxScale){
+    private_handle_t *tmpHnd = NULL;
+
+    if(screen_w <=0 || screen_h<=0 ||src_crop_width<=0 || src_crop_height<=0 ) {
+        LOGE("%s: wrong params for display screen_w=%d src_crop_width=%d screen_w=%d \
+                                src_crop_width=%d", __FUNCTION__, screen_w,
+                                src_crop_width,screen_w,src_crop_width);
+        genlock_unlock_buffer(hnd);
+        return -1;
+    }
+
+    float dsdx = (float)screen_w/src_crop_width;
+    float dtdy = (float)screen_h/src_crop_height;
+
+    int scaleLimit = copybitsMaxScale * copybitsMaxScale;
+    if(dsdx > scaleLimit || dtdy > scaleLimit) {
+        LOGE("%s: greater than max supported size ", __FUNCTION__ );
+        genlock_unlock_buffer(hnd);
+        return -1;
+    }
+
+    if(dsdx > copybitsMaxScale || dtdy > copybitsMaxScale){
         // The requested scale is out of the range the hardware
         // can support.
-       LOGD("%s:%d::Need to scale dsdx=%d, dtdy=%d,maxScaleInv=%d,screen_w=%d,screen_h=%d \
+       LOGD("%s:%d::Need to scale twice dsdx=%f, dtdy=%f,maxScaleInv=%f,screen_w=%d,screen_h=%d \
                   src_crop_width=%d src_crop_height=%d",__FUNCTION__,__LINE__,
                   dsdx,dtdy,copybitsMaxScale,screen_w,screen_h,src_crop_width,src_crop_height);
 
@@ -305,18 +324,17 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
        int tmp_h =  src_crop_height*copybitsMaxScale;
 
        LOGD("%s:%d::tmp_w = %d,tmp_h = %d",__FUNCTION__,__LINE__,tmp_w,tmp_h);
-       tempBitmap = new GraphicBuffer(
-                    tmp_w, tmp_h, src.format,
-                    GraphicBuffer::USAGE_HW_2D);
 
-       err = tempBitmap->initCheck();
-       if (err == android::NO_ERROR){
+       int usage = GRALLOC_USAGE_PRIVATE_ADSP_HEAP |
+                   GRALLOC_USAGE_PRIVATE_MM_HEAP;
+
+       if (0 == alloc_buffer(&tmpHnd, tmp_w, tmp_h, fbHandle->format, usage)){
             copybit_image_t tmp_dst;
             copybit_rect_t tmp_rect;
             tmp_dst.w = tmp_w;
             tmp_dst.h = tmp_h;
-            tmp_dst.format = tempBitmap->format;
-            tmp_dst.handle = (native_handle_t*)tempBitmap->getNativeBuffer()->handle;
+            tmp_dst.format = tmpHnd->format;
+            tmp_dst.handle = tmpHnd;
             tmp_dst.horiz_padding = src.horiz_padding;
             tmp_dst.vert_padding = src.vert_padding;
             tmp_rect.l = 0;
@@ -333,6 +351,9 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
             err = copybit->stretch(copybit,&tmp_dst, &src, &tmp_rect, &srcRect, &tmp_it);
             if(err < 0){
                 LOGE("%s:%d::tmp copybit stretch failed",__FUNCTION__,__LINE__);
+                if(tmpHnd)
+                    free_buffer(tmpHnd);
+                genlock_unlock_buffer(hnd);
                 return err;
             }
             // copy new src and src rect crop
@@ -356,16 +377,19 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
                             (dst.format == HAL_PIXEL_FORMAT_RGB_565)? COPYBIT_ENABLE : COPYBIT_DISABLE);
     err = copybit->stretch(copybit, &dst, &src, &dstRect, &srcRect, &copybitRegion);
 
+    if(tmpHnd)
+        free_buffer(tmpHnd);
+
     if(err < 0)
-        LOGE("drawLayerUsingCopybit stretch failed");
+        LOGE("%s: stretch failed", __FUNCTION__);
 
     // Unlock this buffer since copybit is done with it.
     err = genlock_unlock_buffer(hnd);
     if (GENLOCK_FAILURE == err) {
-        LOGE("drawLayerUsingCopybit genlock_unlock_buffer failed");
+        LOGE("%s: genlock_unlock_buffer failed", __FUNCTION__);
     }
 
-    LOGD_IF(HWC_DEBUG_COPYBIT,"drawLayerUsingCopybit completed with err %d",err);
+    LOGD_IF(HWC_DEBUG_COPYBIT,"%s: completed with err %d", __FUNCTION__, err);
     return err;
 }
 
@@ -375,48 +399,37 @@ static int hwc_set(hwc_composer_device_t *dev,
         hwc_layer_list_t* list)
 {
 
-    if (dpy == NULL && sur == NULL && list == NULL) {
-        // special case: the screen is off, there is nothing to do.
-        LOGD_IF(HWC_DEBUG,"hwc_set screen is off");
-        return 0;
-    } else if (!list) {
-        // allow hwc_set to partially execute here, hack for screen off animation
-        LOGD_IF(HWC_DEBUG,"hwc_set invalid list: attempting hack");
-        EGLBoolean sucess = eglSwapBuffers((EGLDisplay)dpy, (EGLSurface)sur);
-        if (!sucess) {
-            LOGE("hwc_set invalid list and eglSwapBuffers() failed");
-            return HWC_EGL_ERROR;
-        }
-        return 0;
-    }
-
     private_hwc_module_t* hwcModule = reinterpret_cast<private_hwc_module_t*>(
                                                            dev->common.module);
 
     if (!hwcModule) {
-        LOGE("hwc_set invalid module");
+        LOGE("%s: invalid module", __FUNCTION__);
         return -1;
     }
 
-    for (size_t i=0; i<list->numHwLayers; i++) {
-        if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
-            continue;
-        } else if (list->flags & HWC_SKIP_COMPOSITION) {
-            continue;
-        } else if (list->hwLayers[i].compositionType == HWC_USE_COPYBIT) {
-            drawLayerUsingCopybit(dev, &(list->hwLayers[i]),
-                                    (EGLDisplay)dpy, (EGLSurface)sur);
+    if (list) {
+        for (size_t i=0; i<list->numHwLayers; i++) {
+            if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
+                continue;
+            } else if (list->flags & HWC_SKIP_COMPOSITION) {
+                continue;
+            } else if (list->hwLayers[i].compositionType == HWC_USE_COPYBIT) {
+                drawLayerUsingCopybit(dev, &(list->hwLayers[i]),
+                                        (EGLDisplay)dpy, (EGLSurface)sur);
+            }
         }
     }
 
-    if(list->flags & HWC_SKIP_COMPOSITION)
-        LOGD_IF(HWC_DEBUG,"hwc_set skipping eglSwapBuffer call");
+    bool canSkipComposition = list && list->flags & HWC_SKIP_COMPOSITION;
+
+    if(canSkipComposition)
+        LOGD_IF(HWC_DEBUG,"%s: skipping eglSwapBuffer call", __FUNCTION__);
 
     // Do not call eglSwapBuffers if the skip composition flag is set on the list.
-    if (!(list->flags & HWC_SKIP_COMPOSITION)) {
+    if (dpy && sur && !canSkipComposition) {
         EGLBoolean sucess = eglSwapBuffers((EGLDisplay)dpy, (EGLSurface)sur);
         if (!sucess) {
-            LOGE("hwc_set eglSwapBuffers() failed");
+            LOGE("%s: eglSwapBuffers() failed", __FUNCTION__);
             return HWC_EGL_ERROR;
         }
     }
