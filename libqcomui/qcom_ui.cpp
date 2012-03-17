@@ -193,7 +193,7 @@ int decideTextureTarget(int pixel_format)
  * @return true if the format is supported by the GPU.
  */
 bool isGPUSupportedFormatInHW(int format) {
-   // For 7x27A bypass creating EGL image for formats not natively supported
+    // For 7x27A bypass creating EGL image for formats not natively supported
     // in GPU.
     // This is done to save CPU utilization by SurfaceFlinger thread
 #ifdef CHECK_FOR_EXTERNAL_FORMAT
@@ -211,6 +211,7 @@ bool isGPUSupportedFormatInHW(int format) {
 
     return true;
 }
+
 
 /*
  * Function to check if the allocated buffer is of the correct size.
@@ -535,7 +536,6 @@ external_display handleEventHDMI(external_display newState, external_display
     }
     return retState;
 }
-
 #ifdef DEBUG_CALC_FPS
 ANDROID_SINGLETON_STATIC_INSTANCE(CalcFps) ;
 
