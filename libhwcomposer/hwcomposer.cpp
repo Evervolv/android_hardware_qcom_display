@@ -41,6 +41,7 @@
 #include <qcom_ui.h>
 #include <gr.h>
 #include <utils/profiler.h>
+#include <utils/IdleTimer.h>
 
 /*****************************************************************************/
 #define ALIGN(x, align) (((x) + ((align)-1)) & ~((align)-1))
@@ -51,6 +52,7 @@
 #define MAX_BYPASS_LAYERS 3
 #define BYPASS_DEBUG 0
 #define BYPASS_INDEX_OFFSET 4
+#define DEFAULT_IDLE_TIME 2000
 
 enum BypassState {
     BYPASS_ON,
@@ -91,6 +93,8 @@ struct hwc_context_t {
     int layerindex[MAX_BYPASS_LAYERS];
     int nPipesUsed;
     BypassState bypassState;
+    IdleTimer idleTimer;
+    bool idleTimeOut;
 #endif
 #if defined HDMI_DUAL_DISPLAY
     external_display_type mHDMIEnabled; // Type of external display
@@ -162,6 +166,25 @@ static inline int max(const int& a, const int& b) {
     return (a > b) ? a : b;
 }
 #ifdef COMPOSITION_BYPASS
+static void timeout_handler(void *udata) {
+    struct hwc_context_t* ctx = (struct hwc_context_t*)(udata);
+
+    if(!ctx) {
+        LOGE("%s: received empty data in timer callback", __FUNCTION__);
+        return;
+    }
+
+    hwc_procs* proc = (hwc_procs*)ctx->device.reserved_proc[0];
+
+    if(!proc) {
+        LOGE("%s: HWC proc not registered", __FUNCTION__);
+        return;
+    }
+    /* Trigger SF to redraw the current frame */
+    proc->invalidate(proc);
+    ctx->idleTimeOut = true;
+}
+
 void setLayerbypassIndex(hwc_layer_t* layer, const int bypass_index)
 {
     layer->flags &= ~HWC_BYPASS_INDEX_MASK;
@@ -394,6 +417,12 @@ inline static bool isBypassDoable(hwc_composer_device_t *dev, const int yuvCount
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     private_hwc_module_t* hwcModule = reinterpret_cast<private_hwc_module_t*>(
                                                            dev->common.module);
+
+    if(!ctx) {
+        LOGE("%s: hwc context is NULL", __FUNCTION__);
+        return false;
+    }
+
     //Check if enabled in build.prop
     if(hwcModule->isBypassEnabled == false) {
         return false;
@@ -414,10 +443,11 @@ inline static bool isBypassDoable(hwc_composer_device_t *dev, const int yuvCount
         return false;
     }
 
-    char value[PROPERTY_VALUE_MAX];
-    if (property_get("debug.egl.swapinterval", value, "1") > 0) {
-        ctx->swapInterval = atoi(value);
+    if(ctx->idleTimeOut) {
+        ctx->idleTimeOut = false;
+        return false;
     }
+
     //Bypass is not efficient if rotation or asynchronous mode is needed.
     for(int i = 0; i < list->numHwLayers; ++i) {
         if(list->hwLayers[i].transform) {
@@ -1153,7 +1183,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 isBypassUsed = false;
             }
         } else {
-            LOGE_IF(BYPASS_DEBUG,"%s: Bypass not possible[%d,%d]",__FUNCTION__,
+            LOGE_IF( BYPASS_DEBUG,"%s: Bypass not possible[%d,%d]",__FUNCTION__,
                        isDoable, !isSkipLayerPresent );
             isBypassUsed = false;
         }
@@ -1534,6 +1564,7 @@ static int hwc_set(hwc_composer_device_t *dev,
                 continue;
 #ifdef COMPOSITION_BYPASS
             } else if (list->hwLayers[i].flags & HWC_COMP_BYPASS) {
+                ctx->idleTimer.reset();
                 drawLayerUsingBypass(ctx, &(list->hwLayers[i]), i);
 #endif
             } else if (list->hwLayers[i].compositionType == HWC_USE_OVERLAY) {
@@ -1712,6 +1743,17 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         }
         unsetBypassBufferLockState(dev);
         dev->bypassState = BYPASS_OFF;
+
+        char property[PROPERTY_VALUE_MAX];
+        unsigned long idle_timeout = DEFAULT_IDLE_TIME;
+        if (property_get("debug.bypass.idletime", property, NULL) > 0) {
+            if(atoi(property) != 0)
+                idle_timeout = atoi(property);
+        }
+
+        dev->idleTimer.create(timeout_handler, dev);
+        dev->idleTimer.setFreq(idle_timeout);
+        dev->idleTimeOut = false;
 #endif
         ExtDispOnly::init();
 #if defined HDMI_DUAL_DISPLAY
