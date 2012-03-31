@@ -37,6 +37,8 @@
 #include "pmemalloc.h"
 #include "pmem_bestfit_alloc.h"
 
+#define DEBUG_PMEM (0)
+
 using namespace gralloc;
 using android::sp;
 
@@ -208,7 +210,7 @@ int PmemUserspaceAlloc::alloc_buffer(alloc_data& data)
                 mAllocator->deallocate(offset);
                 fd = -1;
             } else {
-                LOGD("%s: Allocated buffer base:%p size:%d offset:%d fd:%d",
+                LOGD_IF(DEBUG_PMEM,"%s: Allocated buffer base:%p size:%d offset:%d fd:%d",
                         mPmemDev, base, size, offset, fd);
                 memset((char*)base + offset, 0, size);
                 //Clean cache before flushing to ensure pmem is properly flushed
@@ -229,7 +231,7 @@ int PmemUserspaceAlloc::alloc_buffer(alloc_data& data)
 
 int PmemUserspaceAlloc::free_buffer(void* base, size_t size, int offset, int fd)
 {
-    LOGD("%s: Freeing buffer base:%p size:%d offset:%d fd:%d",
+    LOGD_IF(DEBUG_PMEM,"%s: Freeing buffer base:%p size:%d offset:%d fd:%d",
             mPmemDev, base, size, offset, fd);
     int err = 0;
     if (fd >= 0) {
@@ -259,7 +261,7 @@ int PmemUserspaceAlloc::map_buffer(void **pBase, size_t size, int offset, int fd
         LOGE("%s: Failed to map buffer size:%d offset:%d fd:%d Error: %s",
                 mPmemDev, size, offset, fd, strerror(errno));
     } else {
-        LOGD("%s: Mapped buffer base:%p size:%d offset:%d fd:%d",
+        LOGD_IF(DEBUG_PMEM,"%s: Mapped buffer base:%p size:%d offset:%d fd:%d",
                 mPmemDev, base, size, offset, fd);
     }
     return err;
@@ -272,7 +274,7 @@ int PmemUserspaceAlloc::unmap_buffer(void *base, size_t size, int offset)
     //pmem hack
     base = (void*)(intptr_t(base) - offset);
     size += offset;
-    LOGD("%s: Unmapping buffer base:%p size:%d offset:%d",
+    LOGD_IF(DEBUG_PMEM,"%s: Unmapping buffer base:%p size:%d offset:%d",
             mPmemDev , base, size, offset);
     if (munmap(base, size) < 0) {
         err = -errno;
@@ -335,7 +337,7 @@ int PmemKernelAlloc::alloc_buffer(alloc_data& data)
     data.base = base;
     data.offset = 0;
     data.fd = fd;
-    LOGD("%s: Allocated buffer base:%p size:%d fd:%d",
+    LOGD_IF(DEBUG_PMEM,"%s: Allocated buffer base:%p size:%d fd:%d",
                             mPmemDev, base, size, fd);
     return 0;
 
@@ -343,7 +345,7 @@ int PmemKernelAlloc::alloc_buffer(alloc_data& data)
 
 int PmemKernelAlloc::free_buffer(void* base, size_t size, int offset, int fd)
 {
-    LOGD("%s: Freeing buffer base:%p size:%d fd:%d",
+    LOGD_IF(DEBUG_PMEM,"%s: Freeing buffer base:%p size:%d fd:%d",
             mPmemDev, base, size, fd);
 
     int err =  unmap_buffer(base, size, offset);
@@ -362,7 +364,7 @@ int PmemKernelAlloc::map_buffer(void **pBase, size_t size, int offset, int fd)
         LOGE("%s: Failed to map memory in the client: %s",
                 mPmemDev, strerror(errno));
     } else {
-        LOGD("%s: Mapped buffer base:%p size:%d, fd:%d",
+        LOGD_IF(DEBUG_PMEM,"%s: Mapped buffer base:%p size:%d, fd:%d",
                                 mPmemDev, base, size, fd);
     }
     return err;
@@ -374,7 +376,7 @@ int PmemKernelAlloc::unmap_buffer(void *base, size_t size, int offset)
     int err = 0;
     if (munmap(base, size)) {
         err = -errno;
-        LOGW("%s: Error unmapping memory at %p: %s",
+        LOGE("%s: Error unmapping memory at %p: %s",
                                 mPmemDev, base, strerror(err));
     }
     return err;
