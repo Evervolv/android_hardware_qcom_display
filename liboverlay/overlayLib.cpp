@@ -742,8 +742,6 @@ bool Overlay::setSource(const overlay_buffer_info& info, int orientation,
                         fbnum = i;
                         //start two channels for one for primary and external.
                         if (fbnum) {
-                            // Disable rotation for external
-                            noRot = true;
                             //set fbnum to hdmiConnected, which holds the ext display
                             fbnum = hdmiConnected;
                             flags &= ~WAIT_FOR_VSYNC;
