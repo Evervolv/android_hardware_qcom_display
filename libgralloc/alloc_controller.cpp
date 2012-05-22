@@ -33,7 +33,9 @@
 #include "gralloc_priv.h"
 #include "alloc_controller.h"
 #include "memalloc.h"
+#ifdef USE_ION
 #include "ionalloc.h"
+#endif
 #include "pmemalloc.h"
 #include "ashmemalloc.h"
 #include "gr.h"
