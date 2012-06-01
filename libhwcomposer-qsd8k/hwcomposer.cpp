@@ -1,8 +1,8 @@
 /*
  * Copyright (C) 2010 The Android Open Source Project
  *
- * Portions modified by Andrew Sutherland <dr3wsuth3rland@gmail.com> for
- * the Evervolv Project's qsd8k lineup
+ * Modified by:
+ *     Andrew Sutherland <dr3wsuth3rland@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,21 +31,19 @@
 #include <cutils/atomic.h>
 #include <cutils/properties.h>
 
+#include <gralloc_priv.h>
 #include <hardware/hwcomposer.h>
+#include <copybit.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <ui/android_native_buffer.h>
-#include <gralloc_priv.h>
 #include <genlock.h>
 #include <qcom_ui.h>
-#include <copybit.h>
 #include <gr.h>
+#include <utils/profiler.h>
 
 #define HWC_DEBUG 0
-// Warning: below defines produce massive logcat output
-#define HWC_DBG_DUMP_LAYER  0
-#define HWC_DEBUG_COPYBIT 0
 /*****************************************************************************/
 #define ALIGN(x, align) (((x) + ((align)-1)) & ~((align)-1))
 
@@ -88,7 +86,7 @@ struct private_hwc_module_t HAL_MODULE_INFO_SYM = {
 /*****************************************************************************/
 
 static void dump_layer(hwc_layer_t const* l) {
-    LOGD_IF(HWC_DBG_DUMP_LAYER,"\ttype=%d, flags=%08x, handle=%p, tr=%02x, blend=%04x, {%d,%d,%d,%d}, {%d,%d,%d,%d}",
+    LOGD("\ttype=%d, flags=%08x, handle=%p, tr=%02x, blend=%04x, {%d,%d,%d,%d}, {%d,%d,%d,%d}",
             l->compositionType, l->flags, l->handle, l->transform, l->blending,
             l->sourceCrop.left,
             l->sourceCrop.top,
@@ -111,18 +109,15 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                                                            dev->common.module);
 
     if (!hwcModule) {
-        LOGE("hwc_prepare invalid module");
+        LOGE("%s: invalid module", __FUNCTION__);
         return -1;
     }
 
-    //TODO: this probably needs work
-    LOGD_IF(HWC_DEBUG,"hwc_prepare found %d layers",list->numHwLayers);
+    LOGD_IF(HWC_DEBUG,"%s: found %d layers",__FUNCTION__,list->numHwLayers);
     for (size_t i=0 ; i<list->numHwLayers ; i++) {
-        dump_layer(&list->hwLayers[i]);
-
         // check for skip layer
         if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
-            LOGD_IF(HWC_DEBUG,"hwc_prepare HWC_SKIP_LAYER on layer %d",i);
+            LOGD_IF(HWC_DEBUG,"%s: HWC_SKIP_LAYER on layer %d",__FUNCTION__,i);
             ssize_t layer_countdown = ((ssize_t)i) - 1;
             // Mark every layer below the SKIP layer to be composed by the GPU
             while (layer_countdown >= 0)
@@ -133,16 +128,13 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
             }
             continue;
         }
-
-
-
-        // use copybit for everything
+        // Copybit is all we have; use it for everything
         if (hwcModule->compositionType & COMPOSITION_TYPE_MDP) {
-            LOGD_IF(HWC_DEBUG,"hwc_prepare using copybit for layer %d", i);
+            LOGD_IF(HWC_DEBUG,"%s: using copybit for layer %d",__FUNCTION__,i);
             list->hwLayers[i].compositionType = HWC_USE_COPYBIT;
         } else {
-            LOGD_IF(HWC_DEBUG,"hwc_prepare copybit flag not set, using framebuffer for layer %d", i);
-            list->hwLayers[i].compositionType = HWC_FRAMEBUFFER; //Google default
+            LOGD_IF(HWC_DEBUG,"%s: copybit flag not set, using framebuffer for layer %d",__FUNCTION__,i);
+            list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
         }
     }
     return 0;
@@ -167,10 +159,10 @@ private:
     static int iterate(copybit_region_t const * self, copybit_rect_t* rect) {
 
         if (!self) {
-            LOGE("iterate invalid copybit region");
+            LOGE("%s: invalid param: region",__FUNCTION__);
             return 0;
         } else if (!rect) {
-            LOGE("iterate invalid copybit rect");
+            LOGE("%s: invalid param: rect",__FUNCTION__);
             return 0;
         }
 
@@ -190,26 +182,24 @@ private:
     mutable range r;
 };
 
-static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
-                                hwc_layer_t *layer,
-                                EGLDisplay dpy,
-                                EGLSurface surface)
+static int drawLayerUsingCopybit(hwc_composer_device_t *dev, hwc_layer_t *layer, EGLDisplay dpy,
+                                 EGLSurface surface)
 {
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     if(!ctx) {
-         LOGE("drawLayerUsingCopybit null context ");
+         LOGE("%s: null context ", __FUNCTION__);
          return -1;
     }
 
     private_hwc_module_t* hwcModule = reinterpret_cast<private_hwc_module_t*>(dev->common.module);
     if(!hwcModule) {
-        LOGE("drawLayerUsingCopybit null module ");
+        LOGE("%s: null module ", __FUNCTION__);
         return -1;
     }
 
     private_handle_t *hnd = (private_handle_t *)layer->handle;
     if(!hnd) {
-        LOGE("drawLayerUsingCopybit invalid handle");
+        LOGE("%s: invalid handle", __FUNCTION__);
         return -1;
     }
 
@@ -233,12 +223,10 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
         genlock_unlock_buffer(hnd);
         return -1;
     }
-    int alignment = 32;
-    if( HAL_PIXEL_FORMAT_RGB_565 == fbHandle->format )
-        alignment = 16;
-     // Set the copybit source:
+
+    // Set the copybit source:
     copybit_image_t src;
-    src.w = ALIGN(hnd->width, alignment);
+    src.w = hnd->width;
     src.h = hnd->height;
     src.format = hnd->format;
     src.base = (void *)hnd->base;
@@ -263,7 +251,7 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
 
     // Copybit dst
     copybit_image_t dst;
-    dst.w = ALIGN(fbHandle->width,alignment);
+    dst.w = ALIGN(fbHandle->width,32);
     dst.h = fbHandle->height;
     dst.format = fbHandle->format;
     dst.base = (void *)fbHandle->base;
@@ -277,6 +265,7 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
     int32_t src_crop_height = sourceCrop.bottom -sourceCrop.top;
 
     float copybitsMaxScale = (float)copybit->get(copybit,COPYBIT_MAGNIFICATION_LIMIT);
+    float copybitsMinScale = (float)copybit->get(copybit,COPYBIT_MINIFICATION_LIMIT);
 
     if((layer->transform == HWC_TRANSFORM_ROT_90) ||
                            (layer->transform == HWC_TRANSFORM_ROT_270)) {
@@ -285,7 +274,6 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
         screen_w  = screen_h;
         screen_h = tmp;
     }
-
     private_handle_t *tmpHnd = NULL;
 
     if(screen_w <=0 || screen_h<=0 ||src_crop_width<=0 || src_crop_height<=0 ) {
@@ -299,19 +287,19 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
     float dsdx = (float)screen_w/src_crop_width;
     float dtdy = (float)screen_h/src_crop_height;
 
-    int scaleLimit = copybitsMaxScale * copybitsMaxScale;
-    if(dsdx > scaleLimit || dtdy > scaleLimit) {
-        LOGE("%s: greater than max supported size ", __FUNCTION__ );
+    float scaleLimitMax = copybitsMaxScale * copybitsMaxScale;
+    float scaleLimitMin = copybitsMinScale * copybitsMinScale;
+    if(dsdx > scaleLimitMax || dtdy > scaleLimitMax || dsdx < 1/scaleLimitMin || dtdy < 1/scaleLimitMin) {
+        LOGE("%s: greater than max supported size dsdx=%f dtdy=%f scaleLimitMax=%f scaleLimitMin=%f", __FUNCTION__,dsdx,dtdy,scaleLimitMax,1/scaleLimitMin);
         genlock_unlock_buffer(hnd);
         return -1;
     }
-
-    if(dsdx > copybitsMaxScale || dtdy > copybitsMaxScale){
+    if(dsdx > copybitsMaxScale || dtdy > copybitsMaxScale || dsdx < 1/copybitsMinScale || dtdy < 1/copybitsMinScale){
         // The requested scale is out of the range the hardware
         // can support.
-       LOGD("%s:%d::Need to scale twice dsdx=%f, dtdy=%f,maxScaleInv=%f,screen_w=%d,screen_h=%d \
+       LOGD("%s:%d::Need to scale twice dsdx=%f, dtdy=%f,copybitsMaxScale=%f,copybitsMinScale=%f,screen_w=%d,screen_h=%d \
                   src_crop_width=%d src_crop_height=%d",__FUNCTION__,__LINE__,
-                  dsdx,dtdy,copybitsMaxScale,screen_w,screen_h,src_crop_width,src_crop_height);
+                  dsdx,dtdy,copybitsMaxScale,1/copybitsMinScale,screen_w,screen_h,src_crop_width,src_crop_height);
 
        //Driver makes width and height as even
        //that may cause wrong calculation of the ratio
@@ -320,9 +308,18 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
        src_crop_width  = (src_crop_width/2)*2;
        src_crop_height = (src_crop_height/2)*2;
 
-       int tmp_w =  src_crop_width*copybitsMaxScale;
-       int tmp_h =  src_crop_height*copybitsMaxScale;
+       int tmp_w =  src_crop_width;
+       int tmp_h =  src_crop_height;
 
+       if (dsdx > copybitsMaxScale || dtdy > copybitsMaxScale ){
+         tmp_w = src_crop_width*copybitsMaxScale;
+         tmp_h = src_crop_height*copybitsMaxScale;
+       }else if (dsdx < 1/copybitsMinScale ||dtdy < 1/copybitsMinScale ){
+         tmp_w = src_crop_width/copybitsMinScale;
+         tmp_h = src_crop_height/copybitsMinScale;
+         tmp_w  = (tmp_w/2)*2;
+         tmp_h = (tmp_h/2)*2;
+       }
        LOGD("%s:%d::tmp_w = %d,tmp_h = %d",__FUNCTION__,__LINE__,tmp_w,tmp_h);
 
        int usage = GRALLOC_USAGE_PRIVATE_ADSP_HEAP |
@@ -361,7 +358,6 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
             srcRect = tmp_rect;
       }
     }
-
     // Copybit region
     hwc_region_t region = layer->visibleRegionScreen;
     region_iterator copybitRegion(region);
@@ -381,7 +377,7 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
         free_buffer(tmpHnd);
 
     if(err < 0)
-        LOGE("%s: stretch failed", __FUNCTION__);
+        LOGE("%s: copybit stretch failed",__FUNCTION__);
 
     // Unlock this buffer since copybit is done with it.
     err = genlock_unlock_buffer(hnd);
@@ -389,7 +385,6 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev,
         LOGE("%s: genlock_unlock_buffer failed", __FUNCTION__);
     }
 
-    LOGD_IF(HWC_DEBUG_COPYBIT,"%s: completed with err %d", __FUNCTION__, err);
     return err;
 }
 
@@ -414,8 +409,7 @@ static int hwc_set(hwc_composer_device_t *dev,
             } else if (list->flags & HWC_SKIP_COMPOSITION) {
                 continue;
             } else if (list->hwLayers[i].compositionType == HWC_USE_COPYBIT) {
-                drawLayerUsingCopybit(dev, &(list->hwLayers[i]),
-                                        (EGLDisplay)dpy, (EGLSurface)sur);
+                drawLayerUsingCopybit(dev, &(list->hwLayers[i]), (EGLDisplay)dpy, (EGLSurface)sur);
             }
         }
     }
@@ -432,6 +426,8 @@ static int hwc_set(hwc_composer_device_t *dev,
             LOGE("%s: eglSwapBuffers() failed", __FUNCTION__);
             return HWC_EGL_ERROR;
         }
+    } else {
+        CALC_FPS();
     }
 
     return 0;
@@ -440,7 +436,7 @@ static int hwc_set(hwc_composer_device_t *dev,
 static int hwc_device_close(struct hw_device_t *dev)
 {
     if(!dev) {
-        LOGE("hwc_device_close null device pointer");
+        LOGE("%s: null device pointer",__FUNCTION__);
         return -1;
     }
 
@@ -501,6 +497,7 @@ static int hwc_module_initialize(struct private_hwc_module_t* hwcModule)
         hwcModule->compositionType = COMPOSITION_TYPE_CPU;
     }
 
+    CALC_INIT();
     return 0;
 }
 
