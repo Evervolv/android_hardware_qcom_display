@@ -40,9 +40,11 @@
 #include <SkImageEncoder.h>
 #include <Transform.h>
 
+#ifdef DECIDE_TEXTURE_TARGET
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#endif
 
 using gralloc::IMemAlloc;
 using gralloc::IonController;
@@ -152,7 +154,7 @@ bool isGPUSupportedFormat(int format) {
 }
 
 /* decide the texture target dynamically, based on the pixel format*/
-
+#ifdef DECIDE_TEXTURE_TARGET
 int decideTextureTarget(int pixel_format)
 {
 
@@ -177,6 +179,7 @@ int decideTextureTarget(int pixel_format)
   }
   return retVal;
 }
+#endif
 
 /*
  * Checks if the format is natively supported by the GPU.
