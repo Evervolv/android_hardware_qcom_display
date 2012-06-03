@@ -19,6 +19,11 @@ LOCAL_PATH:= $(call my-dir)
 
 ifeq ($(TARGET_USES_C2D_COMPOSITION),true)
     include $(CLEAR_VARS)
+
+    ifeq ($(TARGET_USES_ION),true)
+        LOCAL_CFLAGS += -DUSE_ION
+    endif
+
     LOCAL_PRELINK_MODULE := false
     LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
     LOCAL_SHARED_LIBRARIES := liblog libdl libcutils libmemalloc libutils
@@ -28,9 +33,6 @@ ifeq ($(TARGET_USES_C2D_COMPOSITION),true)
     LOCAL_CFLAGS += -DCOPYBIT_Z180=1 -DC2D_SUPPORT_DISPLAY=1
     LOCAL_MODULE_TAGS := optional
     include $(BUILD_SHARED_LIBRARY)
-ifeq ($(TARGET_USES_ION),true)
-    LOCAL_CFLAGS += -DUSE_ION
-endif
 else
     ifneq ($(TARGET_BOARD_PLATFORM),msm7x30)
         ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
