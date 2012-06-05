@@ -190,25 +190,25 @@ int decideTextureTarget(int pixel_format)
  *
  * @return true if the format is supported by the GPU.
  */
-bool isGPUSupportedFormatInHW(int format) {
-    // For 7x27A bypass creating EGL image for formats not natively supported
-    // in GPU.
-    // This is done to save CPU utilization by SurfaceFlinger thread
 #ifdef CHECK_FOR_EXTERNAL_FORMAT
-
-    if (format == HAL_PIXEL_FORMAT_YV12){
-        return false;
-    } else if (format == HAL_PIXEL_FORMAT_YCrCb_420_SP) {
-        return false;
-    } else if (format == HAL_PIXEL_FORMAT_YCbCr_420_SP) {
-        return false;
-    } else if (format == HAL_PIXEL_FORMAT_NV12_ENCODEABLE) {
-       return false;
+bool isGPUSupportedFormatInHW(int format) {
+    // For 7x27A bypass creating EGL image for formats not natively supported in GPU.
+    // This is done to save CPU utilization by SurfaceFlinger thread
+    bool retVal = true;
+    switch(format) {
+        case HAL_PIXEL_FORMAT_YV12:
+        case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+        case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+        case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
+            retVal = false;
+            break;
+        default:
+            retVal = true;
+            break;
     }
-#endif
-
-    return true;
+    return retVal;
 }
+#endif
 
 
 /*

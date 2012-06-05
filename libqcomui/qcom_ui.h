@@ -211,7 +211,9 @@ bool isGPUSupportedFormat(int format);
  *
  * @return true if the format is supported by the GPU.
  */
+#ifdef CHECK_FOR_EXTERNAL_FORMAT
 bool isGPUSupportedFormatInHW(int format);
+#endif
 
 /*
  * Adreno is not optimized for GL_TEXTURE_EXTERNAL_OES

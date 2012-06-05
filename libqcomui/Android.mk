@@ -6,16 +6,6 @@ LOCAL_SRC_FILES := \
         utils/profiler.cpp \
         utils/IdleTimer.cpp
 
-LOCAL_CFLAGS := -DLOG_TAG=\"libQcomUI\"
-
-ifeq ($(TARGET_BOARD_PLATFORM),qsd8k) # these are originally for 7x27a
-    LOCAL_CFLAGS += -DCHECK_FOR_EXTERNAL_FORMAT
-endif
-
-ifeq ($(BOARD_ADRENO_DECIDE_TEXTURE_TARGET),true)
-    LOCAL_CFLAGS += -DDECIDE_TEXTURE_TARGET
-endif
-
 LOCAL_SHARED_LIBRARIES := \
         libutils \
         libcutils \
@@ -29,7 +19,17 @@ LOCAL_C_INCLUDES := $(TOP)/hardware/qcom/display/libgralloc \
                     $(TOP)/external/skia/include/core \
                     $(TOP)/external/skia/include/images
 
+LOCAL_CFLAGS := -DLOG_TAG=\"libQcomUI\"
 LOCAL_CFLAGS += -DDEBUG_CALC_FPS
+
+# Hacks for broken mdp versions
+ifeq ($(BOARD_ADRENO_DECIDE_TEXTURE_TARGET),true)
+    LOCAL_CFLAGS += -DDECIDE_TEXTURE_TARGET
+    ifeq ($(BOARD_ADRENO_AVOID_EXTERNAL_TEXTURE),true)
+        LOCAL_CFLAGS += -DCHECK_FOR_EXTERNAL_FORMAT
+    endif
+endif
+
 LOCAL_MODULE := libQcomUI
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_SHARED_LIBRARY)
