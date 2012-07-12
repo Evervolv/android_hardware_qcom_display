@@ -6,4 +6,6 @@ display-hals := libgralloc libgenlock libcopybit liblight
 display-hals += libhwcomposer liboverlay libqdutils
 endif
 
+display-hals += libtilerenderer
+
 include $(call all-named-subdir-makefiles,$(display-hals))
