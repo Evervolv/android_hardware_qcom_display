@@ -1,8 +1,8 @@
 #Enables the listed display HAL modules
 #libs to be built for QCOM targets only
 
-ifeq ($(call is-vendor-board-platform,QCOM),true)
-display-hals := libgralloc libgenlock libcopybit liblight
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+display-hals := libgralloc libgenlock libcopybit
 display-hals += libhwcomposer liboverlay libqdutils
 endif
 
