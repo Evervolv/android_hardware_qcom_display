@@ -208,7 +208,7 @@ int PmemUserspaceAlloc::alloc_buffer(alloc_data& data)
                 mAllocator->deallocate(offset);
                 fd = -1;
             } else {
-                ALOGD("%s: Allocated buffer base:%p size:%d offset:%d fd:%d",
+                ALOGV("%s: Allocated buffer base:%p size:%d offset:%d fd:%d",
                       mPmemDev, base, size, offset, fd);
                 memset((char*)base + offset, 0, size);
                 //Clean cache before flushing to ensure pmem is properly flushed
@@ -229,7 +229,7 @@ int PmemUserspaceAlloc::alloc_buffer(alloc_data& data)
 
 int PmemUserspaceAlloc::free_buffer(void* base, size_t size, int offset, int fd)
 {
-    ALOGD("%s: Freeing buffer base:%p size:%d offset:%d fd:%d",
+    ALOGV("%s: Freeing buffer base:%p size:%d offset:%d fd:%d",
           mPmemDev, base, size, offset, fd);
     int err = 0;
     if (fd >= 0) {
@@ -259,7 +259,7 @@ int PmemUserspaceAlloc::map_buffer(void **pBase, size_t size, int offset, int fd
         ALOGE("%s: Failed to map buffer size:%d offset:%d fd:%d Error: %s",
               mPmemDev, size, offset, fd, strerror(errno));
     } else {
-        ALOGD("%s: Mapped buffer base:%p size:%d offset:%d fd:%d",
+        ALOGV("%s: Mapped buffer base:%p size:%d offset:%d fd:%d",
               mPmemDev, base, size, offset, fd);
     }
     return err;
@@ -272,7 +272,7 @@ int PmemUserspaceAlloc::unmap_buffer(void *base, size_t size, int offset)
     //pmem hack
     base = (void*)(intptr_t(base) - offset);
     size += offset;
-    ALOGD("%s: Unmapping buffer base:%p size:%d offset:%d",
+    ALOGV("%s: Unmapping buffer base:%p size:%d offset:%d",
           mPmemDev , base, size, offset);
     if (munmap(base, size) < 0) {
         err = -errno;
@@ -335,7 +335,7 @@ int PmemKernelAlloc::alloc_buffer(alloc_data& data)
     data.base = base;
     data.offset = 0;
     data.fd = fd;
-    ALOGD("%s: Allocated buffer base:%p size:%d fd:%d",
+    ALOGV("%s: Allocated buffer base:%p size:%d fd:%d",
           mPmemDev, base, size, fd);
     return 0;
 
@@ -343,7 +343,7 @@ int PmemKernelAlloc::alloc_buffer(alloc_data& data)
 
 int PmemKernelAlloc::free_buffer(void* base, size_t size, int offset, int fd)
 {
-    ALOGD("%s: Freeing buffer base:%p size:%d fd:%d",
+    ALOGV("%s: Freeing buffer base:%p size:%d fd:%d",
           mPmemDev, base, size, fd);
 
     int err =  unmap_buffer(base, size, offset);
@@ -362,7 +362,7 @@ int PmemKernelAlloc::map_buffer(void **pBase, size_t size, int offset, int fd)
         ALOGE("%s: Failed to map memory in the client: %s",
               mPmemDev, strerror(errno));
     } else {
-        ALOGD("%s: Mapped buffer base:%p size:%d, fd:%d",
+        ALOGV("%s: Mapped buffer base:%p size:%d, fd:%d",
               mPmemDev, base, size, fd);
     }
     return err;
