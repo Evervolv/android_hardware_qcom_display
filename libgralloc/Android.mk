@@ -36,12 +36,11 @@ LOCAL_C_INCLUDES       := $(common_includes)
 LOCAL_SHARED_LIBRARIES := $(common_libs) libgenlock
 LOCAL_CFLAGS           := $(common_flags) -DLOG_TAG=\"memalloc\"
 LOCAL_SRC_FILES        := alloc_controller.cpp
-ifeq ($(TARGET_USES_PMEM),true)
+ifeq ($(TARGET_USES_ION),true)
+    LOCAL_SRC_FILES +=  ionalloc.cpp
+else
     LOCAL_SRC_FILES +=  pmemalloc.cpp \
                         ashmemalloc.cpp \
                         pmem_bestfit_alloc.cpp
-else
-    LOCAL_CFLAGS += -DUSE_ION
-    LOCAL_SRC_FILES +=  ionalloc.cpp
 endif
 include $(BUILD_SHARED_LIBRARY)
