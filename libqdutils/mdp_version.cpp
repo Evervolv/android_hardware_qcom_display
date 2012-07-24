@@ -63,6 +63,10 @@ static int getMDPVersionFromFB()
         }
     }
     close(fb_fd);
+#ifdef TARGET_8x50
+    // HACK: kernel reports zero so force the correct version
+    mdp_version = MDP_V3_1;
+#endif
     return mdp_version;
 }
 
