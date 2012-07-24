@@ -20,9 +20,11 @@
 
 #include <cutils/log.h>
 #include <cutils/atomic.h>
-#include <EGL/egl.h>
 
 #include "hwc_utils.h"
+#include "hwc_video.h"
+#include "hwc_uimirror.h"
+#include "hwc_copybit.h"
 
 using namespace qhwc;
 
@@ -65,21 +67,28 @@ static void hwc_registerProcs(struct hwc_composer_device* dev,
 static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
 {
     hwc_context_t* ctx = (hwc_context_t*)(dev);
+    ctx->overlayInUse = false;
+
+    //Prepare is called after a vsync, so unlock previous buffers here.
+    ctx->qbuf->unlockAllPrevious();
+
     if (LIKELY(list)) {
         getLayerStats(ctx, list);
-        cleanOverlays(ctx);
-        for (int i=list->numHwLayers-1; i >= 0 ; i--) {
-            private_handle_t *hnd =
-                (private_handle_t *)list->hwLayers[i].handle;
-            if (isSkipLayer(&list->hwLayers[i])) {
-                break;
-            } else if(isYuvBuffer(hnd)) {
-                handleYUV(ctx,&list->hwLayers[i]);
-            } else {
-                list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
-            }
+        if(VideoOverlay::prepare(ctx, list)) {
+            ctx->overlayInUse = true;
+            //Nothing here
+        } else if(UIMirrorOverlay::prepare(ctx, list)) {
+            ctx->overlayInUse = true;
+        } else if (0) {
+            //Other features
+            ctx->overlayInUse = true;
+        } else { // Else set this flag to false, otherwise video cases
+                 // fail in non-overlay targets.
+            ctx->overlayInUse = false;
         }
+        CopyBit::prepare(ctx, list);
     }
+
     return 0;
 }
 
@@ -91,21 +100,18 @@ static int hwc_set(hwc_composer_device_t *dev,
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     if (LIKELY(list)) {
-        for (size_t i=0; i<list->numHwLayers; i++) {
-            if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
-                continue;
-            } else if (list->hwLayers[i].compositionType == HWC_OVERLAY) {
-                drawLayerUsingOverlay(ctx, &(list->hwLayers[i]));
-            }
-        }
-        //XXX: Handle vsync with FBIO_WAITFORVSYNC ioctl
-        //All other operations (including pan display) should be NOWAIT
+        VideoOverlay::draw(ctx, list);
+        CopyBit::draw(ctx, list, (EGLDisplay)dpy, (EGLSurface)sur);
         EGLBoolean sucess = eglSwapBuffers((EGLDisplay)dpy, (EGLSurface)sur);
+        UIMirrorOverlay::draw(ctx);
     } else {
-        //XXX: put in a wrapper for non overlay targets
-        setOverlayState(ctx, ovutils::OV_CLOSED);
+        ctx->mOverlay->setState(ovutils::OV_CLOSED);
+        ctx->qbuf->unlockAllPrevious();
     }
-    ctx->qbuf->unlockAllPrevious();
+
+    if(!ctx->overlayInUse)
+        ctx->mOverlay->setState(ovutils::OV_CLOSED);
+
     return ret;
 }
 

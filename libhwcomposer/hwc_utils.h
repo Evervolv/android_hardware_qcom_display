@@ -26,12 +26,16 @@
 #include <string.h>
 #include <fb_priv.h>
 #include <overlay.h>
+#include <copybit.h>
+#include <hwc_copybitEngine.h>
 #include <genlock.h>
 #include "hwc_qbuf.h"
+#include <EGL/egl.h>
 
-#define ALIGN(x, align)     (((x) + ((align)-1)) & ~((align)-1))
+#define ALIGN_TO(x, align)     (((x) + ((align)-1)) & ~((align)-1))
 #define LIKELY( exp )       (__builtin_expect( (exp) != 0, true  ))
 #define UNLIKELY( exp )     (__builtin_expect( (exp) != 0, false ))
+#define FINAL_TRANSFORM_MASK 0x000F
 
 struct hwc_context_t;
 namespace qhwc {
@@ -41,16 +45,24 @@ enum external_display_type {
     EXT_TYPE_HDMI,
     EXT_TYPE_WIFI
 };
+enum HWCCompositionType {
+    HWC_USE_GPU = HWC_FRAMEBUFFER, // This layer is to be handled by
+                                   //                 Surfaceflinger
+    HWC_USE_OVERLAY = HWC_OVERLAY, // This layer is to be handled by the overlay
+    HWC_USE_COPYBIT                // This layer is to be handled by copybit
+};
 
 
+class ExtDisplayObserver;
 // -----------------------------------------------------------------------------
 // Utility functions - implemented in hwc_utils.cpp
 void dumpLayer(hwc_layer_t const* l);
 void getLayerStats(hwc_context_t *ctx, const hwc_layer_list_t *list);
-void handleYUV(hwc_context_t *ctx, hwc_layer_t *layer);
 void initContext(hwc_context_t *ctx);
 void closeContext(hwc_context_t *ctx);
-void openFramebufferDevice(hwc_context_t *ctx);
+//Crops source buffer against destination and FB boundaries
+void calculate_crop_rects(hwc_rect_t& crop, hwc_rect_t& dst,
+        const int fbWidth, const int fbHeight);
 
 // Inline utility functions
 static inline bool isSkipLayer(const hwc_layer_t* l) {
@@ -66,28 +78,30 @@ static inline bool isYuvBuffer(const private_handle_t* hnd) {
 static inline bool isBufferLocked(const private_handle_t* hnd) {
     return (hnd && (private_handle_t::PRIV_FLAGS_HWC_LOCK & hnd->flags));
 }
+// -----------------------------------------------------------------------------
+// Copybit specific - inline or implemented in hwc_copybit.cpp
+typedef EGLClientBuffer (*functype_eglGetRenderBufferANDROID) (
+                                                     EGLDisplay dpy,
+                                                    EGLSurface draw);
+typedef EGLSurface (*functype_eglGetCurrentSurface)(EGLint readdraw);
 
 // -----------------------------------------------------------------------------
-// Overlay specific functions - inline or implemented in hwc_overlay.cpp
-bool prepareOverlay(hwc_context_t *ctx, hwc_layer_t *layer);
-//XXX: Refine draw functions
-bool drawLayerUsingOverlay(hwc_context_t *ctx, hwc_layer_t *layer);
-//XXX: Refine
-void cleanOverlays(hwc_context_t *ctx );
-void setOverlayState(hwc_context_t* ctx, ovutils::eOverlayState state);
+// Singleton for Framebuffer device
+class FbDevice{
+public:
+    ~FbDevice();
+    // API to get Fb device(non static)
+    struct framebuffer_device_t *getFb();
+    // API to get singleton
+    static FbDevice* getInstance();
 
-// -----------------------------------------------------------------------------
-// Copybit specific functions - inline or implemented in hwc_copybit.cpp
+private:
+    FbDevice();
+    struct framebuffer_device_t *sFb;
+    static FbDevice* sInstance; // singleton
+};
 
-
-
-// -----------------------------------------------------------------------------
-// HDMI specific functions - inline or implemented in hwc_hdmi.cpp
-
-
-
-} //qhwc namespace
-
+}; //qhwc namespace
 
 
 // -----------------------------------------------------------------------------
@@ -95,25 +109,25 @@ void setOverlayState(hwc_context_t* ctx, ovutils::eOverlayState state);
 // This structure contains overall state
 struct hwc_context_t {
     hwc_composer_device_t device;
-    // Layer variables
-    int yuvBufferCount;
-    int hdmiEnabled;
     int numHwLayers;
     int mdpVersion;
     bool hasOverlay;
-    bool skipComposition;
+    int overlayInUse;
 
     //Framebuffer device
-    framebuffer_device_t *fbDev;
+    qhwc::FbDevice* mFbDevice;
+
+    //Copybit Engine
+    qhwc::CopybitEngine* mCopybitEngine;
 
     //Overlay object - NULL for non overlay devices
     overlay::Overlay *mOverlay;
 
     //QueuedBufferStore to hold buffers for overlay
     qhwc::QueuedBufferStore *qbuf;
+
+    // External display related information
+    qhwc::ExtDisplayObserver*mExtDisplayObserver;
 };
-
-
-
 
 #endif //HWC_UTILS_H
