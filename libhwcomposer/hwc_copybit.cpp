@@ -92,7 +92,7 @@ bool CopyBit::prepare(hwc_context_t *ctx, hwc_layer_list_t *list) {
             break;
         } else if(canUseCopybit(ctx, list, getYuvCount())
                                                   && !ctx->overlayInUse){
-            list->hwLayers[i].compositionType = HWC_USE_COPYBIT;
+            list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
         } else {
             list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
         }
