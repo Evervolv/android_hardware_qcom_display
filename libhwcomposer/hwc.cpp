@@ -110,7 +110,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
 }
 
 static int hwc_eventControl(struct hwc_composer_device* dev,
-                             int event, int enabled)
+                             int event, int value)
 {
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
@@ -118,12 +118,15 @@ static int hwc_eventControl(struct hwc_composer_device* dev,
                 ctx->mFbDev->common.module);
     switch(event) {
         case HWC_EVENT_VSYNC:
-            if(ioctl(m->framebuffer->fd, MSMFB_OVERLAY_VSYNC_CTRL, &enabled) < 0)
+            if(ioctl(m->framebuffer->fd, MSMFB_OVERLAY_VSYNC_CTRL, &value) < 0)
                 ret = -errno;
 
             if(ctx->mExtDisplay->getExternalDisplay()) {
-                ret = ctx->mExtDisplay->enableHDMIVsync(enabled);
+                ret = ctx->mExtDisplay->enableHDMIVsync(value);
             }
+           break;
+       case HWC_EVENT_ORIENTATION:
+             ctx->deviceOrientation = value;
            break;
         default:
             ret = -EINVAL;
