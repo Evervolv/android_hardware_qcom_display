@@ -31,7 +31,7 @@ ifeq ($(TARGET_USES_C2D_COMPOSITION),true)
 else
     ifneq ($(TARGET_BOARD_PLATFORM),msm7x30)
         ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
-            LOCAL_CFLAGS += -DCOPYBIT_QSD8K=1 -DDEBUG_MDP_ERRORS
+            LOCAL_CFLAGS += -DCOPYBIT_QSD8K=1
             LOCAL_SRC_FILES := software_converter.cpp copybit.cpp
             include $(BUILD_SHARED_LIBRARY)
         else
