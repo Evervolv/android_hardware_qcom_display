@@ -31,6 +31,11 @@
 
 namespace qhwc {
 //Feature for using Copybit to display RGB layers.
+typedef EGLClientBuffer (*functype_eglGetRenderBufferANDROID) (
+                                              EGLDisplay dpy,
+                                              EGLSurface draw);
+typedef EGLSurface (*functype_eglGetCurrentSurface)(EGLint readdraw);
+
 class CopyBit {
 public:
     //Sets up members and prepares copybit if conditions are met
@@ -46,8 +51,11 @@ public:
                                         EGLDisplay dpy, EGLSurface surface,
         functype_eglGetRenderBufferANDROID& LINK_eglGetRenderBufferANDROID,
                   functype_eglGetCurrentSurface LINK_eglGetCurrentSurface);
-    static bool canUseCopybit(hwc_context_t* ctx, const hwc_layer_list_t* list,
-                                                      const int numYUVBuffers);
+    static bool canUseCopybitForYUV (hwc_context_t *ctx);
+    static bool canUseCopybitForRGB (hwc_context_t *ctx,
+                                     hwc_layer_list_t *list);
+    static bool validateParams (hwc_context_t *ctx,
+                                const hwc_layer_list_t *list);
     static void closeEglLib();
     static void openEglLibAndGethandle();
 private:
@@ -70,10 +78,25 @@ private:
     static functype_eglGetRenderBufferANDROID LINK_eglGetRenderBufferANDROID;
     static functype_eglGetCurrentSurface LINK_eglGetCurrentSurface;
 
-    static void getLayerResolution(const hwc_layer_t* layer, int& width,
-                                                           int& height);
+    static  unsigned int getRGBRenderingArea (const hwc_layer_list_t *list);
 
+    static void getLayerResolution(const hwc_layer_t* layer,
+                                   unsigned int &width, unsigned int& height);
 };
+
+class CopybitEngine {
+public:
+    ~CopybitEngine();
+    // API to get copybit engine(non static)
+    struct copybit_device_t *getEngine();
+    // API to get singleton
+    static CopybitEngine* getInstance();
+private:
+    CopybitEngine();
+    struct copybit_device_t *sEngine;
+    static CopybitEngine* sInstance; // singleton
+};
+
 
 inline void CopyBit::setStats(int yuvCount, int yuvLayerIndex,
         bool isYuvLayerSkip) {

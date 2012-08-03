@@ -18,12 +18,14 @@
  * limitations under the License.
  */
 
+#define HWC_UI_MIRROR 0
+#include <gralloc_priv.h>
+#include <fb_priv.h>
 #include "hwc_uimirror.h"
-#include "hwc_ext_observer.h"
+#include "hwc_external.h"
 
 namespace qhwc {
 
-#define HWC_UI_MIRROR 0
 
 // Function to get the primary device orientation
 // Loops thru the hardware layers and returns the orientation of the max.
@@ -31,7 +33,7 @@ namespace qhwc {
 int getDeviceOrientation(hwc_context_t* ctx,  hwc_layer_list_t *list) {
     int orientation =  list->hwLayers[0].transform;
     if(!ctx) {
-         ALOGD_IF(HWC_UI_MIRROR, "In %s: ctx is NULL!!", __FUNCTION__);
+         ALOGE("In %s: ctx is NULL!!", __FUNCTION__);
         return -1;
     }
     for(size_t i=0; i <= list->numHwLayers;i++ )
@@ -58,8 +60,14 @@ bool UIMirrorOverlay::sIsUiMirroringOn = false;
 bool UIMirrorOverlay::prepare(hwc_context_t *ctx, hwc_layer_list_t *list) {
     sState = ovutils::OV_CLOSED;
     sIsUiMirroringOn = false;
+
+    if(!ctx->mMDP.hasOverlay) {
+       ALOGD_IF(HWC_UI_MIRROR, "%s, this hw doesnt support mirroring",
+                                                               __FUNCTION__);
+       return false;
+    }
     // If external display is connected
-    if(ctx->mExtDisplayObserver->getExternalDisplay()) {
+    if(ctx->mExtDisplay->getExternalDisplay()) {
         sState = ovutils::OV_UI_MIRROR;
         configure(ctx, list);
     }
@@ -73,7 +81,7 @@ bool UIMirrorOverlay::configure(hwc_context_t *ctx, hwc_layer_list_t *list)
         overlay::Overlay& ov = *(ctx->mOverlay);
         // Set overlay state
         ov.setState(sState);
-        framebuffer_device_t *fbDev = ctx->mFbDevice->getFb();
+        framebuffer_device_t *fbDev = ctx->mFbDev;
         if(fbDev) {
             private_module_t* m = reinterpret_cast<private_module_t*>(
                     fbDev->common.module);
@@ -93,7 +101,7 @@ bool UIMirrorOverlay::configure(hwc_context_t *ctx, hwc_layer_list_t *list)
                 dest = ovutils::OV_PIPE0;
             }
 
-            ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_MEMORY_ID_TYPE_FB;
+            ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_FLAGS_NONE;
             /* - TODO: Secure content
                if (hnd->flags & private_handle_t::PRIV_FLAGS_SECURE_BUFFER) {
                ovutils::setMdpFlags(mdpFlags,
@@ -143,7 +151,7 @@ bool UIMirrorOverlay::draw(hwc_context_t *ctx)
     overlay::Overlay& ov = *(ctx->mOverlay);
     ovutils::eOverlayState state = ov.getState();
     ovutils::eDest dest = ovutils::OV_PIPE_ALL;
-    framebuffer_device_t *fbDev = ctx->mFbDevice->getFb();
+    framebuffer_device_t *fbDev = ctx->mFbDev;
     if(fbDev) {
         private_module_t* m = reinterpret_cast<private_module_t*>(
                               fbDev->common.module);
@@ -158,20 +166,20 @@ bool UIMirrorOverlay::draw(hwc_context_t *ctx)
                 if (!ov.queueBuffer(m->framebuffer->fd, m->currentOffset,
                                                            ovutils::OV_PIPE0)) {
                     ALOGE("%s: queueBuffer failed for external", __FUNCTION__);
+                    ret = false;
                 }
                 break;
             case ovutils::OV_2D_TRUE_UI_MIRROR:
                 if (!ov.queueBuffer(m->framebuffer->fd, m->currentOffset,
                                                            ovutils::OV_PIPE2)) {
                     ALOGE("%s: queueBuffer failed for external", __FUNCTION__);
+                    ret = false;
                 }
                 break;
 
         default:
             break;
         }
-        // TODO:
-        // Call PANDISPLAY ioctl here to kickoff
     }
     return ret;
 }

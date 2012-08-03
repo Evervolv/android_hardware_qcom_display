@@ -268,23 +268,9 @@ enum eMdpFlags {
     OV_MDP_FLAGS_NONE = 0,
     OV_MDP_PIPE_SHARE =  MDP_OV_PIPE_SHARE,
     OV_MDP_DEINTERLACE = MDP_DEINTERLACE,
-    OV_MDP_PLAY_NOWAIT = MDP_OV_PLAY_NOWAIT, //deprecated
     OV_MDP_SECURE_OVERLAY_SESSION = MDP_SECURE_OVERLAY_SESSION,
     OV_MDP_SOURCE_ROTATED_90 = MDP_SOURCE_ROTATED_90,
     OV_MDP_MEMORY_ID_TYPE_FB = MDP_MEMORY_ID_TYPE_FB,
-};
-
-enum eOverlayPipeType {
-    OV_PIPE_TYPE_NULL,
-    OV_PIPE_TYPE_BYPASS,
-    OV_PIPE_TYPE_GENERIC,
-    OV_PIPE_TYPE_VIDEO_EXT,
-    OV_PIPE_TYPE_M3D_EXTERNAL,
-    OV_PIPE_TYPE_M3D_PRIMARY,
-    OV_PIPE_TYPE_RGB,
-    OV_PIPE_TYPE_S3D_EXTERNAL,
-    OV_PIPE_TYPE_S3D_PRIMARY,
-    OV_PIPE_TYPE_UI_MIRROR
 };
 
 enum eZorder {
@@ -370,6 +356,7 @@ enum eOverlayState{
     /* 2D Video */
     OV_2D_VIDEO_ON_PANEL,
     OV_2D_VIDEO_ON_PANEL_TV,
+    OV_2D_VIDEO_ON_TV,
 
     /* 3D Video on one display (panel or TV) */
     OV_3D_VIDEO_ON_2D_PANEL,
@@ -382,12 +369,14 @@ enum eOverlayState{
     /* UI Mirroring */
     OV_UI_MIRROR,
     OV_2D_TRUE_UI_MIRROR,
-    OV_M3D_TRUE_UI_MIRROR,  // Not yet supported
 
     /* Composition Bypass */
     OV_BYPASS_1_LAYER,
     OV_BYPASS_2_LAYER,
     OV_BYPASS_3_LAYER,
+
+    /* External only for dual-disp */
+    OV_DUAL_DISP,
 };
 
 inline void setMdpFlags(eMdpFlags& f, eMdpFlags v) {
@@ -606,6 +595,8 @@ inline const char* getStateString(eOverlayState state){
             return "OV_2D_VIDEO_ON_PANEL";
         case OV_2D_VIDEO_ON_PANEL_TV:
             return "OV_2D_VIDEO_ON_PANEL_TV";
+        case OV_2D_VIDEO_ON_TV:
+            return "OV_2D_VIDEO_ON_TV";
         case OV_3D_VIDEO_ON_2D_PANEL:
             return "OV_3D_VIDEO_ON_2D_PANEL";
         case OV_3D_VIDEO_ON_3D_PANEL:
@@ -624,6 +615,8 @@ inline const char* getStateString(eOverlayState state){
             return "OV_BYPASS_2_LAYER";
         case OV_BYPASS_3_LAYER:
             return "OV_BYPASS_3_LAYER";
+        case OV_DUAL_DISP:
+            return "OV_DUAL_DISP";
         default:
             return "UNKNOWN_STATE";
     }

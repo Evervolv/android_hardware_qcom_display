@@ -15,26 +15,43 @@
  * limitations under the License.
  */
 
+#include <overlay.h>
 #include "hwc_utils.h"
 #include "mdp_version.h"
 #include "hwc_video.h"
-#include "hwc_ext_observer.h"
+#include "hwc_qbuf.h"
 #include "hwc_copybit.h"
+#include "hwc_external.h"
+#include "hwc_mdpcomp.h"
+#include "hwc_extonly.h"
+
 namespace qhwc {
+
+// Opens Framebuffer device
+static void openFramebufferDevice(hwc_context_t *ctx)
+{
+    hw_module_t const *module;
+    if (hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module) == 0) {
+        framebuffer_open(module, &(ctx->mFbDev));
+    }
+}
+
 void initContext(hwc_context_t *ctx)
 {
-    //XXX: target specific initializations here
+    openFramebufferDevice(ctx);
     ctx->mOverlay = overlay::Overlay::getInstance();
     ctx->qbuf = new QueuedBufferStore();
-    ctx->mdpVersion = qdutils::MDPVersion::getInstance().getMDPVersion();
-    ctx->hasOverlay = qdutils::MDPVersion::getInstance().hasOverlay();
-    ALOGI("MDP version: %d",ctx->mdpVersion);
-
-    ctx->mExtDisplayObserver = ExtDisplayObserver::getInstance();
-    ctx->mExtDisplayObserver->setHwcContext(ctx);
-    ctx->mFbDevice = FbDevice::getInstance();
+    ctx->mMDP.version = qdutils::MDPVersion::getInstance().getMDPVersion();
+    ctx->mMDP.hasOverlay = qdutils::MDPVersion::getInstance().hasOverlay();
+    ctx->mMDP.panel = qdutils::MDPVersion::getInstance().getPanelType();
     ctx->mCopybitEngine = CopybitEngine::getInstance();
-    CopyBit::openEglLibAndGethandle();
+    ctx->mExtDisplay = new ExternalDisplay(ctx);
+    MDPComp::init(ctx);
+
+    init_uevent_thread(ctx);
+
+    ALOGI("Initializing Qualcomm Hardware Composer");
+    ALOGI("MDP version: %d", ctx->mMDP.version);
 }
 
 void closeContext(hwc_context_t *ctx)
@@ -48,15 +65,25 @@ void closeContext(hwc_context_t *ctx)
         delete ctx->mCopybitEngine;
         ctx->mCopybitEngine = NULL;
     }
-    if(ctx->mFbDevice) {
-        delete ctx->mFbDevice;
-        ctx->mFbDevice = NULL;
+
+    if(ctx->mFbDev) {
+        framebuffer_close(ctx->mFbDev);
+        ctx->mFbDev = NULL;
     }
+
     if(ctx->qbuf) {
         delete ctx->qbuf;
         ctx->qbuf = NULL;
     }
-    CopyBit::closeEglLib();
+
+    if(ctx->mExtDisplay) {
+        delete ctx->mExtDisplay;
+        ctx->mExtDisplay = NULL;
+    }
+
+
+    free(const_cast<hwc_methods_t *>(ctx->device.methods));
+
 }
 
 void dumpLayer(hwc_layer_t const* l)
@@ -80,28 +107,47 @@ void getLayerStats(hwc_context_t *ctx, const hwc_layer_list_t *list)
     int yuvCount = 0;
     int yuvLayerIndex = -1;
     bool isYuvLayerSkip = false;
+    int skipCount = 0;
+    int ccLayerIndex = -1; //closed caption
+    int extLayerIndex = -1; //ext-only or block except closed caption
+    int extCount = 0; //ext-only except closed caption
+    bool isExtBlockPresent = false; //is BLOCK layer present
 
     for (size_t i = 0; i < list->numHwLayers; i++) {
         private_handle_t *hnd =
             (private_handle_t *)list->hwLayers[i].handle;
 
-        if (isYuvBuffer(hnd)) {
+        if (UNLIKELY(isYuvBuffer(hnd))) {
             yuvCount++;
             yuvLayerIndex = i;
             //Animating
             if (isSkipLayer(&list->hwLayers[i])) {
                 isYuvLayerSkip = true;
             }
+        } else if(UNLIKELY(isExtCC(hnd))) {
+            ccLayerIndex = i;
+        } else if(UNLIKELY(isExtBlock(hnd))) {
+            extCount++;
+            extLayerIndex = i;
+            isExtBlockPresent = true;
+        } else if(UNLIKELY(isExtOnly(hnd))) {
+            extCount++;
+            //If BLOCK layer present, dont cache index, display BLOCK only.
+            if(isExtBlockPresent == false) extLayerIndex = i;
         } else if (isSkipLayer(&list->hwLayers[i])) { //Popups
             //If video layer is below a skip layer
             if(yuvLayerIndex != -1 && yuvLayerIndex < (ssize_t)i) {
                 isYuvLayerSkip = true;
             }
+            skipCount++;
         }
     }
 
-    VideoOverlay::setStats(yuvCount, yuvLayerIndex, isYuvLayerSkip);
+    VideoOverlay::setStats(yuvCount, yuvLayerIndex, isYuvLayerSkip,
+            ccLayerIndex);
+    ExtOnly::setStats(extCount, extLayerIndex, isExtBlockPresent);
     CopyBit::setStats(yuvCount, yuvLayerIndex, isYuvLayerSkip);
+    MDPComp::setStats(skipCount);
 
     ctx->numHwLayers = list->numHwLayers;
     return;
@@ -160,35 +206,6 @@ void calculate_crop_rects(hwc_rect_t& crop, hwc_rect_t& dst,
 
         dst_b = fbHeight;
         dst_h = dst_b - dst_y;
-    }
-}
-
-//FbDevice class functions
-FbDevice* FbDevice::sInstance = 0;;
-struct framebuffer_device_t* FbDevice::getFb() {
-   return sFb;
-}
-
-FbDevice* FbDevice::getInstance() {
-   if(sInstance == NULL)
-       sInstance = new FbDevice();
-   return sInstance;
-}
-
-FbDevice::FbDevice(){
-    hw_module_t const *module;
-    if (hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module) == 0) {
-        framebuffer_open(module, &sFb);
-    } else {
-       ALOGE("FATAL ERROR: framebuffer open failed.");
-    }
-}
-FbDevice::~FbDevice()
-{
-    if(sFb)
-    {
-       framebuffer_close(sFb);
-       sFb = NULL;
     }
 }
 

@@ -17,28 +17,34 @@
 
 #ifndef HWC_UTILS_H
 #define HWC_UTILS_H
-#include <cutils/log.h>
-#include <gralloc_priv.h>
+
 #include <hardware/hwcomposer.h>
-#include <hardware/hardware.h>
-#include <hardware/gralloc.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fb_priv.h>
-#include <overlay.h>
-#include <copybit.h>
-#include <hwc_copybitEngine.h>
-#include <genlock.h>
-#include "hwc_qbuf.h"
-#include <EGL/egl.h>
+#include <gralloc_priv.h>
 
 #define ALIGN_TO(x, align)     (((x) + ((align)-1)) & ~((align)-1))
 #define LIKELY( exp )       (__builtin_expect( (exp) != 0, true  ))
 #define UNLIKELY( exp )     (__builtin_expect( (exp) != 0, false ))
 #define FINAL_TRANSFORM_MASK 0x000F
 
+//Fwrd decls
 struct hwc_context_t;
+struct framebuffer_device_t;
+
+namespace overlay {
+class Overlay;
+}
+
 namespace qhwc {
+//fwrd decl
+class QueuedBufferStore;
+class ExternalDisplay;
+class CopybitEngine;
+
+struct MDPInfo {
+    int version;
+    char panel;
+    bool hasOverlay;
+};
 
 enum external_display_type {
     EXT_TYPE_NONE,
@@ -52,8 +58,13 @@ enum HWCCompositionType {
     HWC_USE_COPYBIT                // This layer is to be handled by copybit
 };
 
+enum {
+    HWC_MDPCOMP = 0x00000002,
+    HWC_LAYER_RESERVED_0 = 0x00000004,
+    HWC_LAYER_RESERVED_1 = 0x00000008
+};
 
-class ExtDisplayObserver;
+
 // -----------------------------------------------------------------------------
 // Utility functions - implemented in hwc_utils.cpp
 void dumpLayer(hwc_layer_t const* l);
@@ -78,31 +89,33 @@ static inline bool isYuvBuffer(const private_handle_t* hnd) {
 static inline bool isBufferLocked(const private_handle_t* hnd) {
     return (hnd && (private_handle_t::PRIV_FLAGS_HWC_LOCK & hnd->flags));
 }
-// -----------------------------------------------------------------------------
-// Copybit specific - inline or implemented in hwc_copybit.cpp
-typedef EGLClientBuffer (*functype_eglGetRenderBufferANDROID) (
-                                                     EGLDisplay dpy,
-                                                    EGLSurface draw);
-typedef EGLSurface (*functype_eglGetCurrentSurface)(EGLint readdraw);
 
-// -----------------------------------------------------------------------------
-// Singleton for Framebuffer device
-class FbDevice{
-public:
-    ~FbDevice();
-    // API to get Fb device(non static)
-    struct framebuffer_device_t *getFb();
-    // API to get singleton
-    static FbDevice* getInstance();
+//Return true if buffer is for external display only
+static inline bool isExtOnly(const private_handle_t* hnd) {
+    return (hnd && (hnd->flags & private_handle_t::PRIV_FLAGS_EXTERNAL_ONLY));
+}
 
-private:
-    FbDevice();
-    struct framebuffer_device_t *sFb;
-    static FbDevice* sInstance; // singleton
-};
+//Return true if buffer is for external display only with a BLOCK flag.
+static inline bool isExtBlock(const private_handle_t* hnd) {
+    return (hnd && (hnd->flags & private_handle_t::PRIV_FLAGS_EXTERNAL_BLOCK));
+}
 
+//Return true if buffer is for external display only with a Close Caption flag.
+static inline bool isExtCC(const private_handle_t* hnd) {
+    return (hnd && (hnd->flags & private_handle_t::PRIV_FLAGS_EXTERNAL_CC));
+}
+
+// Initialize uevent thread
+void init_uevent_thread(hwc_context_t* ctx);
+
+inline void getLayerResolution(const hwc_layer_t* layer,
+                                         int& width, int& height)
+{
+    hwc_rect_t displayFrame  = layer->displayFrame;
+    width = displayFrame.right - displayFrame.left;
+    height = displayFrame.bottom - displayFrame.top;
+}
 }; //qhwc namespace
-
 
 // -----------------------------------------------------------------------------
 // HWC context
@@ -110,12 +123,10 @@ private:
 struct hwc_context_t {
     hwc_composer_device_t device;
     int numHwLayers;
-    int mdpVersion;
-    bool hasOverlay;
     int overlayInUse;
 
     //Framebuffer device
-    qhwc::FbDevice* mFbDevice;
+    framebuffer_device_t *mFbDev;
 
     //Copybit Engine
     qhwc::CopybitEngine* mCopybitEngine;
@@ -127,7 +138,10 @@ struct hwc_context_t {
     qhwc::QueuedBufferStore *qbuf;
 
     // External display related information
-    qhwc::ExtDisplayObserver*mExtDisplayObserver;
+    qhwc::ExternalDisplay *mExtDisplay;
+
+    qhwc::MDPInfo mMDP;
+
 };
 
 #endif //HWC_UTILS_H

@@ -20,11 +20,19 @@
 
 #include <cutils/log.h>
 #include <cutils/atomic.h>
+#include <EGL/egl.h>
 
+#include <overlay.h>
+#include <fb_priv.h>
+#include <mdp_version.h>
 #include "hwc_utils.h"
+#include "hwc_qbuf.h"
 #include "hwc_video.h"
 #include "hwc_uimirror.h"
 #include "hwc_copybit.h"
+#include "hwc_external.h"
+#include "hwc_mdpcomp.h"
+#include "hwc_extonly.h"
 
 using namespace qhwc;
 
@@ -73,11 +81,21 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
     ctx->qbuf->unlockAllPrevious();
 
     if (LIKELY(list)) {
+        //reset for this draw round
+        VideoOverlay::reset();
+        ExtOnly::reset();
+
         getLayerStats(ctx, list);
+        // Mark all layers to COPYBIT initially
+        CopyBit::prepare(ctx, list);
         if(VideoOverlay::prepare(ctx, list)) {
             ctx->overlayInUse = true;
             //Nothing here
+        } else if(ExtOnly::prepare(ctx, list)) {
+            ctx->overlayInUse = true;
         } else if(UIMirrorOverlay::prepare(ctx, list)) {
+            ctx->overlayInUse = true;
+        } else if(MDPComp::configure(dev, list)) {
             ctx->overlayInUse = true;
         } else if (0) {
             //Other features
@@ -86,10 +104,54 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
                  // fail in non-overlay targets.
             ctx->overlayInUse = false;
         }
-        CopyBit::prepare(ctx, list);
     }
 
     return 0;
+}
+
+static int hwc_eventControl(struct hwc_composer_device* dev,
+                             int event, int enabled)
+{
+    int ret = 0;
+    hwc_context_t* ctx = (hwc_context_t*)(dev);
+    private_module_t* m = reinterpret_cast<private_module_t*>(
+                ctx->mFbDev->common.module);
+    switch(event) {
+        case HWC_EVENT_VSYNC:
+            if(ioctl(m->framebuffer->fd, MSMFB_OVERLAY_VSYNC_CTRL, &enabled) < 0)
+                ret = -errno;
+
+            if(ctx->mExtDisplay->getExternalDisplay()) {
+                ret = ctx->mExtDisplay->enableHDMIVsync(enabled);
+            }
+           break;
+        default:
+            ret = -EINVAL;
+    }
+    return ret;
+}
+
+static int hwc_query(struct hwc_composer_device* dev,
+                     int param, int* value)
+{
+    hwc_context_t* ctx = (hwc_context_t*)(dev);
+    private_module_t* m = reinterpret_cast<private_module_t*>(
+        ctx->mFbDev->common.module);
+
+    switch (param) {
+    case HWC_BACKGROUND_LAYER_SUPPORTED:
+        // Not supported for now
+        value[0] = 0;
+        break;
+    case HWC_VSYNC_PERIOD:
+        value[0] = 1000000000.0 / m->fps;
+        ALOGI("fps: %d", value[0]);
+        break;
+    default:
+        return -EINVAL;
+    }
+    return 0;
+
 }
 
 static int hwc_set(hwc_composer_device_t *dev,
@@ -101,9 +163,13 @@ static int hwc_set(hwc_composer_device_t *dev,
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     if (LIKELY(list)) {
         VideoOverlay::draw(ctx, list);
+        ExtOnly::draw(ctx, list);
         CopyBit::draw(ctx, list, (EGLDisplay)dpy, (EGLSurface)sur);
+        MDPComp::draw(ctx, list);
         EGLBoolean sucess = eglSwapBuffers((EGLDisplay)dpy, (EGLSurface)sur);
         UIMirrorOverlay::draw(ctx);
+        if(ctx->mExtDisplay->getExternalDisplay())
+           ctx->mExtDisplay->commit();
     } else {
         ctx->mOverlay->setState(ovutils::OV_CLOSED);
         ctx->qbuf->unlockAllPrevious();
@@ -118,7 +184,7 @@ static int hwc_set(hwc_composer_device_t *dev,
 static int hwc_device_close(struct hw_device_t *dev)
 {
     if(!dev) {
-        ALOGE("hwc_device_close null device pointer");
+        ALOGE("%s: NULL device pointer", __FUNCTION__);
         return -1;
     }
     closeContext((hwc_context_t*)dev);
@@ -136,14 +202,30 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         struct hwc_context_t *dev;
         dev = (hwc_context_t*)malloc(sizeof(*dev));
         memset(dev, 0, sizeof(*dev));
+
+        //Initialize hwc context
         initContext(dev);
+
+        //Setup HWC methods
+        hwc_methods_t *methods;
+        methods = (hwc_methods_t *)malloc(sizeof(*methods));
+        memset(methods, 0, sizeof(*methods));
+        methods->eventControl = hwc_eventControl;
+
         dev->device.common.tag     = HARDWARE_DEVICE_TAG;
-        dev->device.common.version = 0;
+        //XXX: This disables hardware vsync on 7x27A, 8x25 and 8x55
+        // Fix when HW vsync is available on those targets
+        if(dev->mMDP.version < 410)
+            dev->device.common.version = 0;
+        else
+            dev->device.common.version = HWC_DEVICE_API_VERSION_0_3;
         dev->device.common.module  = const_cast<hw_module_t*>(module);
         dev->device.common.close   = hwc_device_close;
         dev->device.prepare        = hwc_prepare;
         dev->device.set            = hwc_set;
         dev->device.registerProcs  = hwc_registerProcs;
+        dev->device.query          = hwc_query;
+        dev->device.methods        = methods;
         *device                    = &dev->device.common;
         status = 0;
     }
