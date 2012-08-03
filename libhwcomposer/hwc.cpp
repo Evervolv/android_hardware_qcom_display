@@ -213,9 +213,9 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         methods->eventControl = hwc_eventControl;
 
         dev->device.common.tag     = HARDWARE_DEVICE_TAG;
-        //XXX: This disables hardware vsync on 7x27A, 8x25 and 8x55
-        // Fix when HW vsync is available on those targets
-        if(dev->mMDP.version < 410)
+        //XXX: This disables hardware vsync on 8x55
+        // Fix when HW vsync is available on 8x55
+        if(dev->mMDP.version == 400)
             dev->device.common.version = 0;
         else
             dev->device.common.version = HWC_DEVICE_API_VERSION_0_3;
