@@ -101,11 +101,7 @@ enum {
 enum {
     /* OEM specific HAL formats */
     HAL_PIXEL_FORMAT_NV12_ENCODEABLE        = 0x102,
-#ifdef QCOM_ICS_COMPAT
-    HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED     = 0x108,
-#else
     HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED     = 0x7FA30C03,
-#endif
     HAL_PIXEL_FORMAT_YCbCr_420_SP           = 0x109,
     HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO    = 0x7FA30C01,
     HAL_PIXEL_FORMAT_YCrCb_422_SP           = 0x10B,
