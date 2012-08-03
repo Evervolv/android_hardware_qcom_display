@@ -108,7 +108,7 @@ inline OvMem::OvMem() {
     mAllocType = 0;
     mBufSz = 0;
     mNumBuffers = 0;
-    mAlloc = gralloc::IAllocController::getInstance();
+    mAlloc = gralloc::IAllocController::getInstance(false);
 }
 
 inline OvMem::~OvMem() { }
@@ -121,6 +121,9 @@ inline bool OvMem::open(uint32_t numbufs,
     if(isSecure) {
         allocFlags |= GRALLOC_USAGE_PRIVATE_MM_HEAP;
         allocFlags |= GRALLOC_USAGE_PRIVATE_CP_BUFFER;
+#ifndef USE_ION
+        allocFlags |= GRALLOC_USAGE_PRIVATE_DO_NOT_MAP;
+#endif
     }
 
     int err = 0;

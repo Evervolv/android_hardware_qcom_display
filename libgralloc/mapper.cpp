@@ -51,7 +51,7 @@ using namespace gralloc;
 static IMemAlloc* getAllocator(int flags)
 {
     IMemAlloc* memalloc;
-    IAllocController* alloc_ctrl = IAllocController::getInstance();
+    IAllocController* alloc_ctrl = IAllocController::getInstance(true);
     memalloc = alloc_ctrl->getAllocator(flags);
     return memalloc;
 }
@@ -327,7 +327,12 @@ int gralloc_perform(struct gralloc_module_t const* module,
                     private_handle_t::sNumFds, private_handle_t::sNumInts);
                 hnd->magic = private_handle_t::sMagic;
                 hnd->fd = fd;
+#ifdef USE_ION
                 hnd->flags =  private_handle_t::PRIV_FLAGS_USES_ION;
+#else
+                hnd->flags = private_handle_t::PRIV_FLAGS_USES_PMEM |
+                             private_handle_t::PRIV_FLAGS_DO_NOT_FLUSH;
+#endif
                 hnd->size = size;
                 hnd->offset = offset;
                 hnd->base = intptr_t(base) + offset;

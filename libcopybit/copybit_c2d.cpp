@@ -932,7 +932,7 @@ static int get_temp_buffer(const bufferInfo& info, alloc_data& data)
     int allocFlags = GRALLOC_USAGE_PRIVATE_SYSTEM_HEAP;
 
     if (sAlloc == 0) {
-        sAlloc = gralloc::IAllocController::getInstance();
+        sAlloc = gralloc::IAllocController::getInstance(false);
     }
 
     if (sAlloc == 0) {
