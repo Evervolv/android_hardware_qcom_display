@@ -125,6 +125,15 @@ void MDPComp::timeout_handler(void *udata) {
     proc->invalidate(proc);
 }
 
+void MDPComp::reset_comp_type(hwc_layer_list_t* list) {
+    for(uint32_t i = 0 ; i < list->numHwLayers; i++ ) {
+        hwc_layer_t* l = &list->hwLayers[i];
+
+        if(l->compositionType == HWC_OVERLAY)
+            l->compositionType = HWC_FRAMEBUFFER;
+    }
+}
+
 void MDPComp::reset( hwc_context_t *ctx, hwc_layer_list_t* list ) {
     sCurrentFrame.count = 0;
     free(sCurrentFrame.pipe_layer);
@@ -333,8 +342,7 @@ int MDPComp::prepare(hwc_context_t *ctx, hwc_layer_t *layer,
  * 5. Overlay in use
  */
 
-bool MDPComp::is_doable(hwc_composer_device_t *dev,
-                                                const hwc_layer_list_t* list) {
+bool MDPComp::is_doable(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
     hwc_context_t* ctx = (hwc_context_t*)(dev);
 
     if(!ctx) {
@@ -343,7 +351,7 @@ bool MDPComp::is_doable(hwc_composer_device_t *dev,
     }
 
     //Number of layers
-    if(list->numHwLayers < 1 || list->numHwLayers > sMaxLayers) {
+    if(list->numHwLayers < 1 || list->numHwLayers > (uint32_t) sMaxLayers) {
         ALOGD_IF(isDebug(), "%s: Unsupported number of layers",__FUNCTION__);
         return false;
     }
@@ -355,6 +363,7 @@ bool MDPComp::is_doable(hwc_composer_device_t *dev,
 
     //FB composition on idle timeout
     if(sIdleFallBack) {
+        reset_comp_type(list);
         ALOGD_IF(isDebug(), "%s: idle fallback",__FUNCTION__);
         return false;
     }
