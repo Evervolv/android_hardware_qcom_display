@@ -77,6 +77,9 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     ctx->overlayInUse = false;
 
+    if(ctx->mExtDisplay->getExternalDisplay())
+        ovutils::setExtType(ctx->mExtDisplay->getExternalDisplay());
+
     //Prepare is called after a vsync, so unlock previous buffers here.
     ctx->qbuf->unlockAllPrevious();
 
@@ -110,7 +113,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
 }
 
 static int hwc_eventControl(struct hwc_composer_device* dev,
-                             int event, int enabled)
+                             int event, int value)
 {
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
@@ -118,12 +121,15 @@ static int hwc_eventControl(struct hwc_composer_device* dev,
                 ctx->mFbDev->common.module);
     switch(event) {
         case HWC_EVENT_VSYNC:
-            if(ioctl(m->framebuffer->fd, MSMFB_OVERLAY_VSYNC_CTRL, &enabled) < 0)
+            if(ioctl(m->framebuffer->fd, MSMFB_OVERLAY_VSYNC_CTRL, &value) < 0)
                 ret = -errno;
 
             if(ctx->mExtDisplay->getExternalDisplay()) {
-                ret = ctx->mExtDisplay->enableHDMIVsync(enabled);
+                ret = ctx->mExtDisplay->enableHDMIVsync(value);
             }
+           break;
+       case HWC_EVENT_ORIENTATION:
+             ctx->deviceOrientation = value;
            break;
         default:
             ret = -EINVAL;
@@ -213,9 +219,9 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         methods->eventControl = hwc_eventControl;
 
         dev->device.common.tag     = HARDWARE_DEVICE_TAG;
-        //XXX: This disables hardware vsync on 7x27A, 8x25 and 8x55
-        // Fix when HW vsync is available on those targets
-        if(dev->mMDP.version < 410)
+        //XXX: This disables hardware vsync on 8x55
+        // Fix when HW vsync is available on 8x55
+        if(dev->mMDP.version == 400)
             dev->device.common.version = 0;
         else
             dev->device.common.version = HWC_DEVICE_API_VERSION_0_3;
