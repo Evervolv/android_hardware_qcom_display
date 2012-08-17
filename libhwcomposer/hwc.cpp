@@ -178,6 +178,12 @@ static int hwc_set(hwc_composer_device_t *dev,
         UIMirrorOverlay::draw(ctx);
         if(ctx->mExtDisplay->getExternalDisplay())
            ctx->mExtDisplay->commit();
+    } else if (dpy && sur) {
+        EGLBoolean sucess = eglSwapBuffers((EGLDisplay)dpy, (EGLSurface)sur);
+        if (!sucess) {
+            ALOGE("%s: eglSwapBuffers() failed", __FUNCTION__);
+            ret = HWC_EGL_ERROR;
+        }
     } else {
         ctx->mOverlay->setState(ovutils::OV_CLOSED);
         ctx->qbuf->unlockAllPrevious();
