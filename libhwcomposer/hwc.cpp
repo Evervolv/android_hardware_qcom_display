@@ -73,8 +73,10 @@ static void hwc_registerProcs(struct hwc_composer_device* dev,
     }
     ctx->device.reserved_proc[0] = (void*)procs;
 
-    // Now that we have the functions needed, kick off the uevent thread
+    // Now that we have the functions needed, kick off
+    // the uevent & vsync threads
     init_uevent_thread(ctx);
+    init_vsync_thread(ctx);
 }
 
 static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list)
@@ -243,12 +245,18 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         methods->eventControl = hwc_eventControl;
 
         dev->device.common.tag     = HARDWARE_DEVICE_TAG;
-#ifdef NO_HW_VSYNC
-        dev->device.common.version = 0;
-        ALOGI("%s: Hardware VSYNC not supported", __FUNCTION__);
-#else
-        dev->device.common.version = HWC_DEVICE_API_VERSION_0_3;
-        ALOGI("%s: Hardware VSYNC supported", __FUNCTION__);
+#ifndef NO_HW_VSYNC
+        //XXX: This disables hardware vsync on 8x55
+        // Fix when HW vsync is available on 8x55
+        if(dev->mMDP.version == 400 || (dev->mMDP.version >= 500)) {
+#endif
+            dev->device.common.version = 0;
+            ALOGI("%s: Hardware VSYNC not supported", __FUNCTION__);
+#ifndef NO_HW_VSYNC
+        } else {
+            dev->device.common.version = HWC_DEVICE_API_VERSION_0_3;
+            ALOGI("%s: Hardware VSYNC supported", __FUNCTION__);
+        }
 #endif
         dev->device.common.module  = const_cast<hw_module_t*>(module);
         dev->device.common.close   = hwc_device_close;
