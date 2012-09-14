@@ -22,7 +22,7 @@
 #include <gl2ext.h>
 #include "tilerenderer.h"
 
-#define DEBUG_TILE_RENDERER 1
+#define DEBUG_TILE_RENDERER 0
 
 namespace android {
 ANDROID_SINGLETON_STATIC_INSTANCE(uirenderer::TileRenderer) ;
