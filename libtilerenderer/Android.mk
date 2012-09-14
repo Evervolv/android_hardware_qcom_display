@@ -9,7 +9,7 @@ LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES
 LOCAL_CFLAGS += -DQCOM_APP_TILE_RENDER
 
 LOCAL_C_INCLUDES := \
-        frameworks/native/include/utils \
+        frameworks/base/include/utils \
         frameworks/base/libs/hwui \
         hardware/libhardware/include/hardware \
         frameworks/native/opengl/include/GLES2
