@@ -1,3 +1,4 @@
+ifeq ($(TARGET_QCOM_DISPLAY_VARIANT),)
 ifneq ($(filter msm8084 msm8x84,$(TARGET_BOARD_PLATFORM)),)
     #This is for 8084 based platforms
     include $(call all-named-subdir-makefiles,msm8084)
@@ -11,6 +12,7 @@ ifneq ($(filter msm8226 msm8x26,$(TARGET_BOARD_PLATFORM)),)
 else
     #This is for 8960 based platforms
     include $(call all-named-subdir-makefiles,msm8960)
+endif
 endif
 endif
 endif
