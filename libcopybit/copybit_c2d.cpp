@@ -115,8 +115,8 @@ static gralloc::IAllocController* sAlloc = 0;
 /** State information for each device instance */
 struct copybit_context_t {
     struct copybit_device_t device;
-    unsigned int src[NUM_SURFACES];  /* src surfaces */
-    unsigned int dst[NUM_SURFACES];  /* dst surfaces */
+    int src[NUM_SURFACES];  /* src surfaces */
+    int dst[NUM_SURFACES];  /* dst surfaces */
     unsigned int trg_transform;      /* target transform */
     C2D_OBJECT blitState;
     void *libc2d2;
@@ -1290,8 +1290,8 @@ static int blit_copybit(
     struct copybit_image_t const *src,
     struct copybit_region_t const *region)
 {
-    struct copybit_rect_t dr = { 0, 0, dst->w, dst->h };
-    struct copybit_rect_t sr = { 0, 0, src->w, src->h };
+    struct copybit_rect_t dr = { 0, 0, (int) dst->w, (int) dst->h };
+    struct copybit_rect_t sr = { 0, 0, (int) src->w, (int) src->h };
     return stretch_copybit_internal(dev, dst, src, &dr, &sr, region, false);
 }
 
@@ -1392,7 +1392,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     surfDefinition.width = 1;
     surfDefinition.height = 1;
     surfDefinition.format = C2D_COLOR_FORMAT_8888_ARGB;
-    if (LINK_c2dCreateSurface(&(ctx->dst[RGB_SURFACE]), C2D_TARGET | C2D_SOURCE,
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->dst[RGB_SURFACE]), C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST |
                                                  C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY ), &surfDefinition)) {
         ALOGE("%s: create ctx->dst[RGB_SURFACE] failed", __FUNCTION__);
@@ -1401,7 +1401,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     }
 
 
-    if (LINK_c2dCreateSurface(&(ctx->src[RGB_SURFACE]), C2D_TARGET | C2D_SOURCE,
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->src[RGB_SURFACE]), C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST |
                                                  C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY), &surfDefinition)) {
         ALOGE("%s: create ctx->src[RGB_SURFACE] failed", __FUNCTION__);
@@ -1422,7 +1422,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     yuvSurfaceDef.phys1 = (void*) 0xaaaaaaaa;
     yuvSurfaceDef.stride1 = 4;
 
-    if (LINK_c2dCreateSurface(&(ctx->src[YUV_SURFACE_2_PLANES]),
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->src[YUV_SURFACE_2_PLANES]),
                               C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST|C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY),
                               &yuvSurfaceDef)) {
@@ -1431,7 +1431,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
         goto error;
     }
 
-    if (LINK_c2dCreateSurface(&(ctx->dst[YUV_SURFACE_2_PLANES]),
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->dst[YUV_SURFACE_2_PLANES]),
                               C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY),
                               &yuvSurfaceDef)) {
@@ -1445,7 +1445,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     yuvSurfaceDef.phys2 = (void*) 0xaaaaaaaa;
     yuvSurfaceDef.stride2 = 4;
 
-    if (LINK_c2dCreateSurface(&(ctx->src[YUV_SURFACE_3_PLANES]),
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->src[YUV_SURFACE_3_PLANES]),
                               C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY),
                               &yuvSurfaceDef)) {
@@ -1454,7 +1454,7 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
         goto error;
     }
 
-    if (LINK_c2dCreateSurface(&(ctx->dst[YUV_SURFACE_3_PLANES]),
+    if (LINK_c2dCreateSurface((uint32 *) &(ctx->dst[YUV_SURFACE_3_PLANES]),
                               C2D_TARGET | C2D_SOURCE,
                               (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS | C2D_SURFACE_WITH_PHYS_DUMMY),
                               &yuvSurfaceDef)) {
