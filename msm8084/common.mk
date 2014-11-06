@@ -50,3 +50,6 @@ endif
 ifneq ($(call is-platform-sdk-version-at-least,18),true)
     common_flags += -DANDROID_JELLYBEAN_MR1=1
 endif
+
+common_deps += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
+kernel_includes += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
