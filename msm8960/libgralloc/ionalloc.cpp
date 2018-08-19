@@ -31,6 +31,7 @@
 #include <linux/ioctl.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <cutils/log.h>

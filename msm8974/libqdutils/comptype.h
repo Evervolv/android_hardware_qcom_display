@@ -32,7 +32,6 @@
 
 #include <stdint.h>
 #include <string.h>
-
 #include <utils/Singleton.h>
 #include <cutils/properties.h>
 
