@@ -6,6 +6,7 @@ common_includes += hardware/qcom/display/msm8960/libqdutils
 common_includes += hardware/qcom/display/msm8960/libhwcomposer
 common_includes += hardware/qcom/display/msm8960/libexternal
 common_includes += hardware/qcom/display/msm8960/libqservice
+common_includes += system/libbase/include
 
 common_header_export_path := qcom/display
 
