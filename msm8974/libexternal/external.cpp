@@ -21,7 +21,6 @@
 #define DEBUG 0
 #include <ctype.h>
 #include <fcntl.h>
-#include <media/IAudioPolicyService.h>
 #include <media/AudioSystem.h>
 #include <utils/threads.h>
 #include <utils/Errors.h>
